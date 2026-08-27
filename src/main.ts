@@ -1,4 +1,3 @@
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
@@ -15,13 +14,9 @@ async function bootstrap() {
     credentials: false, // Bearer-token auth — no cookies crossing origins.
   });
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  // Global ValidationPipe is registered in AppModule (via APP_PIPE), not here
+  // — that way it also applies when a test harness builds AppModule directly
+  // without going through this bootstrap() function.
 
   const port = config.get<number>('app.port')!;
   await app.listen(port);

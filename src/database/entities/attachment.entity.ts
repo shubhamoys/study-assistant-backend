@@ -8,7 +8,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Flashcard } from './flashcard.entity';
-import { User } from './user.entity';
+import { User } from '../../app-modules/users/entities/user.entity';
 
 @Entity('attachments')
 export class Attachment {

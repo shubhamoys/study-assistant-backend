@@ -12,7 +12,7 @@ import {
 import { FSRSState } from '../enums';
 import { Deck } from './deck.entity';
 import { Flashcard } from './flashcard.entity';
-import { User } from './user.entity';
+import { User } from '../../app-modules/users/entities/user.entity';
 
 @Entity('card_progress')
 @Unique(['userId', 'cardId'])

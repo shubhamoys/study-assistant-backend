@@ -17,7 +17,7 @@ import { Flashcard } from './flashcard.entity';
 import { Library } from './library.entity';
 import { Review } from './review.entity';
 import { StudySession } from './study-session.entity';
-import { User } from './user.entity';
+import { User } from '../../app-modules/users/entities/user.entity';
 
 @Entity('decks')
 @Index(['isPublic', 'isFree'])

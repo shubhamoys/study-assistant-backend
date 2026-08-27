@@ -1,3 +1,4 @@
+import { User } from '../../app-modules/users/entities/user.entity';
 import { Attachment } from './attachment.entity';
 import { CardProgress } from './card-progress.entity';
 import { Category } from './category.entity';
@@ -8,7 +9,6 @@ import { RefreshToken } from './refresh-token.entity';
 import { Review } from './review.entity';
 import { ReviewHistory } from './review-history.entity';
 import { StudySession } from './study-session.entity';
-import { User } from './user.entity';
 
 export {
   Attachment,
@@ -21,10 +21,13 @@ export {
   Review,
   ReviewHistory,
   StudySession,
-  User,
 };
 
-/** Registered with both the running app (TypeOrmModule) and the CLI DataSource. */
+/**
+ * Registered with both the running app (TypeOrmModule) and the CLI DataSource.
+ * `User` lives in src/app-modules/users/entities — imported here only to be
+ * listed for TypeORM; import the entity itself from its module, not this barrel.
+ */
 export const entities = [
   User,
   RefreshToken,

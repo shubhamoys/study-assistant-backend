@@ -11,7 +11,8 @@
 import * as bcrypt from 'bcrypt';
 import AppDataSource from '../data-source';
 import { Difficulty, UserRole } from '../enums';
-import { Category, Deck, Flashcard, User } from '../entities';
+import { Category, Deck, Flashcard } from '../entities';
+import { User } from '../../app-modules/users/entities/user.entity';
 
 async function main() {
   const adminEmail = requireEnv('SEED_ADMIN_EMAIL');

@@ -10,7 +10,7 @@ import {
 import { FSRSState, Rating } from '../enums';
 import { Flashcard } from './flashcard.entity';
 import { StudySession } from './study-session.entity';
-import { User } from './user.entity';
+import { User } from '../../app-modules/users/entities/user.entity';
 
 @Entity('review_history')
 @Index(['userId', 'cardId'])
