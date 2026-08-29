@@ -15,6 +15,9 @@ import { HealthModule } from './health/health.module';
 import { GqlThrottlerGuard } from './shared/guards/gql-throttler.guard';
 import { AuthModule } from './app-modules/auth/auth.module';
 import { UsersModule } from './app-modules/users/users.module';
+import { StoreModule } from './app-modules/store/store.module';
+import { LibraryModule } from './app-modules/library/library.module';
+import { StudyModule } from './app-modules/study/study.module';
 
 @Module({
   imports: [
@@ -88,6 +91,9 @@ import { UsersModule } from './app-modules/users/users.module';
     HealthModule,
     UsersModule,
     AuthModule,
+    StoreModule,
+    LibraryModule,
+    StudyModule,
   ],
   providers: [
     {

@@ -9,10 +9,10 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
-import { FSRSState } from '../enums';
-import { Deck } from './deck.entity';
+import { FSRSState } from '../../../database/enums';
 import { Flashcard } from './flashcard.entity';
-import { User } from '../../app-modules/users/entities/user.entity';
+import { Deck } from '../../store/entities/deck.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity('card_progress')
 @Unique(['userId', 'cardId'])
@@ -64,6 +64,16 @@ export class CardProgress {
 
   @Column({ type: 'int', default: 0 })
   scheduledDays!: number;
+
+  /**
+   * Index into ts-fsrs's (re)learning step sequence — required by the
+   * library's `Card` shape (not in the original DATABASE_DESIGN.md spec,
+   * added when wiring up FSRS for checkpoint 3) so a partially-completed
+   * learning/relearning sequence (e.g. the [1m, 10m] default steps) resumes
+   * correctly across separate `submitCardReview` calls instead of restarting.
+   */
+  @Column({ type: 'int', default: 0 })
+  learningSteps!: number;
 
   @Column({ type: 'int', default: 0 })
   reps!: number;

@@ -7,7 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { Flashcard } from './flashcard.entity';
+import { Flashcard } from '../../app-modules/study/entities/flashcard.entity';
 import { User } from '../../app-modules/users/entities/user.entity';
 
 @Entity('attachments')

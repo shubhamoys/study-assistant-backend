@@ -11,7 +11,9 @@
 import * as bcrypt from 'bcrypt';
 import AppDataSource from '../data-source';
 import { Difficulty, UserRole } from '../enums';
-import { Category, Deck, Flashcard } from '../entities';
+import { Category } from '../../app-modules/store/entities/category.entity';
+import { Deck } from '../../app-modules/store/entities/deck.entity';
+import { Flashcard } from '../../app-modules/study/entities/flashcard.entity';
 import { User } from '../../app-modules/users/entities/user.entity';
 
 async function main() {

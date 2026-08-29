@@ -10,13 +10,13 @@ import {
 } from 'typeorm';
 import { UserRole } from '../../../database/enums';
 import { Attachment } from '../../../database/entities/attachment.entity';
-import { CardProgress } from '../../../database/entities/card-progress.entity';
-import { Deck } from '../../../database/entities/deck.entity';
-import { Library } from '../../../database/entities/library.entity';
 import { RefreshToken } from '../../../database/entities/refresh-token.entity';
 import { Review } from '../../../database/entities/review.entity';
-import { ReviewHistory } from '../../../database/entities/review-history.entity';
-import { StudySession } from '../../../database/entities/study-session.entity';
+import { Deck } from '../../store/entities/deck.entity';
+import { Library } from '../../library/entities/library.entity';
+import { CardProgress } from '../../study/entities/card-progress.entity';
+import { ReviewHistory } from '../../study/entities/review-history.entity';
+import { StudySession } from '../../study/entities/study-session.entity';
 
 @Entity('users')
 export class User {

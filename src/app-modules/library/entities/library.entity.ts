@@ -9,8 +9,8 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
-import { Deck } from './deck.entity';
-import { User } from '../../app-modules/users/entities/user.entity';
+import { Deck } from '../../store/entities/deck.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity('library')
 @Unique(['userId', 'deckId'])

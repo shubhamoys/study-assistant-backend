@@ -7,10 +7,10 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { FSRSState, Rating } from '../enums';
+import { FSRSState, Rating } from '../../../database/enums';
 import { Flashcard } from './flashcard.entity';
 import { StudySession } from './study-session.entity';
-import { User } from '../../app-modules/users/entities/user.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity('review_history')
 @Index(['userId', 'cardId'])

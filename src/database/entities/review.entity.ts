@@ -11,7 +11,7 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
-import { Deck } from './deck.entity';
+import { Deck } from '../../app-modules/store/entities/deck.entity';
 import { User } from '../../app-modules/users/entities/user.entity';
 
 @Entity('reviews')

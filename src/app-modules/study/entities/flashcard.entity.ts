@@ -10,10 +10,10 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Attachment } from './attachment.entity';
+import { Attachment } from '../../../database/entities/attachment.entity';
 import { CardProgress } from './card-progress.entity';
-import { Deck } from './deck.entity';
 import { ReviewHistory } from './review-history.entity';
+import { Deck } from '../../store/entities/deck.entity';
 
 @Entity('flashcards')
 @Index(['deckId', 'orderIndex'])

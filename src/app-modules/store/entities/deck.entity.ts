@@ -10,14 +10,14 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Difficulty } from '../enums';
-import { CardProgress } from './card-progress.entity';
+import { Difficulty } from '../../../database/enums';
+import { Review } from '../../../database/entities/review.entity';
+import { CardProgress } from '../../study/entities/card-progress.entity';
+import { Flashcard } from '../../study/entities/flashcard.entity';
+import { StudySession } from '../../study/entities/study-session.entity';
 import { Category } from './category.entity';
-import { Flashcard } from './flashcard.entity';
-import { Library } from './library.entity';
-import { Review } from './review.entity';
-import { StudySession } from './study-session.entity';
-import { User } from '../../app-modules/users/entities/user.entity';
+import { Library } from '../../library/entities/library.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity('decks')
 @Index(['isPublic', 'isFree'])
@@ -97,4 +97,13 @@ export class Deck {
 
   @OneToMany(() => CardProgress, (cardProgress) => cardProgress.deck)
   cardProgresses!: CardProgress[];
+
+  /**
+   * Not a real column — populated by the correlated-COUNT-subquery pattern
+   * in StoreService/LibraryService (see their `withCardCount` methods;
+   * TypeORM 1.x has no `loadRelationCountAndMap`). Undefined unless a query
+   * explicitly maps it; declared here only so TS lets resolvers read it off
+   * the entity instance the way GraphQL's default field resolution expects.
+   */
+  cardCount?: number;
 }
