@@ -1,5 +1,7 @@
+import { join } from 'path';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -12,10 +14,22 @@ const LAN_ORIGIN_PATTERN =
   /^http:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}):\d+$/;
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
 
   app.use(helmet());
+
+  // Only affects REST controllers (the avatar upload endpoint) — the
+  // GraphQL module registers its own route directly against the HTTP
+  // adapter and stays at /graphql regardless of this prefix.
+  app.setGlobalPrefix(config.get<string>('app.apiPrefix')!);
+
+  // Serves study-assistant-backend/uploads/** at /uploads/** so an
+  // avatarUrl like /uploads/avatars/<id>.png actually resolves to a real
+  // image in the browser. Local-storage dev stand-in for Cloudflare R2 (see
+  // storage.config.ts) — R2 serves these directly from its own public URL
+  // in production, this route won't exist there.
+  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
 
   const isProd = config.get<string>('app.nodeEnv') === 'production';
   const allowedOrigins = config.get<string[]>('app.corsOrigins')!;

@@ -6,6 +6,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { User } from '../src/app-modules/users/entities/user.entity';
+import { MailService } from '../src/shared/mail/mail.service';
 
 interface GraphQLResponse<T> {
   body: {
@@ -24,6 +25,7 @@ function gql(query: string) {
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
   let userRepository: Repository<User>;
+  let mailService: MailService;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -34,6 +36,7 @@ describe('Auth (e2e)', () => {
     await app.init();
 
     userRepository = moduleFixture.get(getRepositoryToken(User));
+    mailService = moduleFixture.get(MailService);
     await userRepository.delete({ email: TEST_EMAIL });
   });
 
@@ -54,18 +57,23 @@ describe('Auth (e2e)', () => {
     expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
   });
 
-  it('registers a new user and returns an access token', async () => {
+  it('registers a new user and returns an access token + refresh token', async () => {
     const res: GraphQLResponse<{
-      register: { accessToken: string; user: { email: string; role: string } };
+      register: {
+        accessToken: string;
+        refreshToken: string;
+        user: { email: string; role: string };
+      };
     }> = await request(app.getHttpServer())
       .post('/graphql')
       .send(
         gql(
-          `mutation { register(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}" }) { accessToken user { email role } } }`,
+          `mutation { register(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}" }) { accessToken refreshToken user { email role } } }`,
         ),
       );
 
     expect(res.body.data?.register.accessToken).toEqual(expect.any(String));
+    expect(res.body.data?.register.refreshToken).toEqual(expect.any(String));
     expect(res.body.data?.register.user).toEqual({
       email: TEST_EMAIL,
       role: 'USER',
@@ -134,5 +142,308 @@ describe('Auth (e2e)', () => {
       .send(gql(`{ me { email } }`));
 
     expect(res.body.errors?.[0]?.extensions?.code).toBe('UNAUTHENTICATED');
+  });
+
+  describe('refresh tokens', () => {
+    it('rotates on use, and rejects reuse of the old token', async () => {
+      const loginRes: GraphQLResponse<{
+        login: { refreshToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { login(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}" }) { refreshToken } }`,
+          ),
+        );
+      const oldToken = loginRes.body.data!.login.refreshToken;
+
+      const refreshRes: GraphQLResponse<{
+        refreshToken: { accessToken: string; refreshToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { refreshToken(refreshToken: "${oldToken}") { accessToken refreshToken } }`,
+          ),
+        );
+      expect(refreshRes.body.data?.refreshToken.accessToken).toEqual(
+        expect.any(String),
+      );
+      const newToken = refreshRes.body.data!.refreshToken.refreshToken;
+      expect(newToken).not.toBe(oldToken);
+
+      const reuseRes: GraphQLResponse<null> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { refreshToken(refreshToken: "${oldToken}") { accessToken } }`,
+          ),
+        );
+      expect(reuseRes.body.errors?.[0]?.extensions?.code).toBe(
+        'UNAUTHENTICATED',
+      );
+    });
+
+    it('rejects a garbage refresh token', async () => {
+      const res: GraphQLResponse<null> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { refreshToken(refreshToken: "garbage") { accessToken } }`,
+          ),
+        );
+
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('UNAUTHENTICATED');
+    });
+  });
+
+  describe('logout', () => {
+    it('revokes the given refresh token', async () => {
+      const loginRes: GraphQLResponse<{
+        login: { accessToken: string; refreshToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { login(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}" }) { accessToken refreshToken } }`,
+          ),
+        );
+      const { accessToken, refreshToken } = loginRes.body.data!.login;
+
+      const logoutRes: GraphQLResponse<{ logout: boolean }> = await request(
+        app.getHttpServer(),
+      )
+        .post('/graphql')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(gql(`mutation { logout(refreshToken: "${refreshToken}") }`));
+      expect(logoutRes.body.data?.logout).toBe(true);
+
+      const reuseRes: GraphQLResponse<null> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { refreshToken(refreshToken: "${refreshToken}") { accessToken } }`,
+          ),
+        );
+      expect(reuseRes.body.errors?.[0]?.extensions?.code).toBe(
+        'UNAUTHENTICATED',
+      );
+    });
+  });
+
+  describe('verifyEmail', () => {
+    it('marks the user verified given the token sent at registration', async () => {
+      const sendSpy = jest
+        .spyOn(mailService, 'sendVerificationEmail')
+        .mockResolvedValue(undefined);
+
+      const email = 'e2e-verify-test@example.com';
+      await userRepository.delete({ email });
+      await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { register(input: { email: "${email}", password: "${TEST_PASSWORD}" }) { accessToken } }`,
+          ),
+        );
+
+      const rawToken = sendSpy.mock.calls[0][1];
+      sendSpy.mockRestore();
+
+      const verifyRes: GraphQLResponse<{ verifyEmail: boolean }> =
+        await request(app.getHttpServer())
+          .post('/graphql')
+          .send(gql(`mutation { verifyEmail(token: "${rawToken}") }`));
+      expect(verifyRes.body.data?.verifyEmail).toBe(true);
+
+      const user = await userRepository.findOneBy({ email });
+      expect(user?.isEmailVerified).toBe(true);
+      expect(user?.verificationToken).toBeNull();
+
+      await userRepository.delete({ email });
+    });
+
+    it('rejects an invalid token', async () => {
+      const res: GraphQLResponse<null> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(gql(`mutation { verifyEmail(token: "not-a-real-token") }`));
+
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
+    });
+  });
+
+  describe('forgotPassword / resetPassword', () => {
+    it('resets the password and revokes existing refresh tokens', async () => {
+      const loginRes: GraphQLResponse<{
+        login: { refreshToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { login(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}" }) { refreshToken } }`,
+          ),
+        );
+      const existingRefreshToken = loginRes.body.data!.login.refreshToken;
+
+      const sendSpy = jest
+        .spyOn(mailService, 'sendPasswordResetEmail')
+        .mockResolvedValue(undefined);
+
+      await request(app.getHttpServer())
+        .post('/graphql')
+        .send(gql(`mutation { forgotPassword(email: "${TEST_EMAIL}") }`));
+
+      const rawToken = sendSpy.mock.calls[0][1];
+      sendSpy.mockRestore();
+
+      const newPassword = 'a-brand-new-password';
+      const resetRes: GraphQLResponse<{ resetPassword: boolean }> =
+        await request(app.getHttpServer())
+          .post('/graphql')
+          .send(
+            gql(
+              `mutation { resetPassword(input: { token: "${rawToken}", newPassword: "${newPassword}" }) }`,
+            ),
+          );
+      expect(resetRes.body.data?.resetPassword).toBe(true);
+
+      // Old refresh token issued before the reset must now be dead.
+      const reuseRes: GraphQLResponse<null> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { refreshToken(refreshToken: "${existingRefreshToken}") { accessToken } }`,
+          ),
+        );
+      expect(reuseRes.body.errors?.[0]?.extensions?.code).toBe(
+        'UNAUTHENTICATED',
+      );
+
+      // New password logs in; restore TEST_PASSWORD for the other tests.
+      const loginNew: GraphQLResponse<{ login: { accessToken: string } }> =
+        await request(app.getHttpServer())
+          .post('/graphql')
+          .send(
+            gql(
+              `mutation { login(input: { email: "${TEST_EMAIL}", password: "${newPassword}" }) { accessToken } }`,
+            ),
+          );
+      expect(loginNew.body.data?.login.accessToken).toEqual(expect.any(String));
+
+      await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { changePassword(input: { currentPassword: "${newPassword}", newPassword: "${TEST_PASSWORD}" }) }`,
+          ),
+        )
+        .set(
+          'Authorization',
+          `Bearer ${loginNew.body.data!.login.accessToken}`,
+        );
+    });
+
+    it('forgotPassword does not reveal whether the email exists', async () => {
+      const res: GraphQLResponse<{ forgotPassword: boolean }> = await request(
+        app.getHttpServer(),
+      )
+        .post('/graphql')
+        .send(
+          gql(`mutation { forgotPassword(email: "no-such-user@example.com") }`),
+        );
+      expect(res.body.data?.forgotPassword).toBe(true);
+    });
+
+    it('rejects an invalid/expired reset token', async () => {
+      const res: GraphQLResponse<null> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { resetPassword(input: { token: "not-a-real-token", newPassword: "whatever123" }) }`,
+          ),
+        );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
+    });
+  });
+
+  describe('changePassword', () => {
+    it('rejects the wrong current password', async () => {
+      const loginRes: GraphQLResponse<{
+        login: { accessToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { login(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}" }) { accessToken } }`,
+          ),
+        );
+      const { accessToken } = loginRes.body.data!.login;
+
+      const res: GraphQLResponse<null> = await request(app.getHttpServer())
+        .post('/graphql')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(
+          gql(
+            `mutation { changePassword(input: { currentPassword: "wrong-password", newPassword: "whatever123" }) }`,
+          ),
+        );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('UNAUTHENTICATED');
+    });
+
+    it('changes the password and revokes existing refresh tokens', async () => {
+      const loginRes: GraphQLResponse<{
+        login: { accessToken: string; refreshToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { login(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}" }) { accessToken refreshToken } }`,
+          ),
+        );
+      const { accessToken, refreshToken } = loginRes.body.data!.login;
+
+      const newPassword = 'yet-another-password';
+      const changeRes: GraphQLResponse<{ changePassword: boolean }> =
+        await request(app.getHttpServer())
+          .post('/graphql')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send(
+            gql(
+              `mutation { changePassword(input: { currentPassword: "${TEST_PASSWORD}", newPassword: "${newPassword}" }) }`,
+            ),
+          );
+      expect(changeRes.body.data?.changePassword).toBe(true);
+
+      const reuseRes: GraphQLResponse<null> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { refreshToken(refreshToken: "${refreshToken}") { accessToken } }`,
+          ),
+        );
+      expect(reuseRes.body.errors?.[0]?.extensions?.code).toBe(
+        'UNAUTHENTICATED',
+      );
+
+      // Restore TEST_PASSWORD so later test runs against the same DB row
+      // (this suite doesn't delete the user between individual tests) stay
+      // consistent.
+      const loginNew: GraphQLResponse<{ login: { accessToken: string } }> =
+        await request(app.getHttpServer())
+          .post('/graphql')
+          .send(
+            gql(
+              `mutation { login(input: { email: "${TEST_EMAIL}", password: "${newPassword}" }) { accessToken } }`,
+            ),
+          );
+      await request(app.getHttpServer())
+        .post('/graphql')
+        .set('Authorization', `Bearer ${loginNew.body.data!.login.accessToken}`)
+        .send(
+          gql(
+            `mutation { changePassword(input: { currentPassword: "${newPassword}", newPassword: "${TEST_PASSWORD}" }) }`,
+          ),
+        );
+    });
   });
 });

@@ -9,6 +9,11 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
  * Bearer JWT unless annotated with @Public(). Overrides getRequest() because
  * passport-jwt's default AuthGuard assumes an HTTP execution context, which
  * is empty for GraphQL requests (same issue as GqlThrottlerGuard).
+ *
+ * Also handles plain REST controllers (e.g. the avatar upload endpoint) —
+ * `context.getType()` reads 'http' for those (set by the underlying Express
+ * adapter before any GraphQL wrapping happens), so this branches rather than
+ * assuming every request is a GraphQL one.
  */
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -17,6 +22,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   getRequest(context: ExecutionContext) {
+    if (context.getType() === 'http') {
+      return context.switchToHttp().getRequest<Record<string, unknown>>();
+    }
     return GqlExecutionContext.create(context).getContext<{ req: unknown }>()
       .req;
   }

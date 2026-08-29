@@ -8,13 +8,15 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { User } from '../../app-modules/users/entities/user.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity('refresh_tokens')
 export class RefreshToken {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  // Holds a SHA-256 hash of the raw token, never the raw token itself — see
+  // token.util.ts. Mirrors verificationToken/resetPasswordToken on User.
   @Column({ type: 'varchar', length: 512, unique: true })
   token!: string;
 
