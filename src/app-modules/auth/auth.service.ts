@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -23,6 +25,7 @@ import { RefreshToken } from './entities/refresh-token.entity';
 import { generateOpaqueToken, hashToken } from './token.util';
 
 const RESET_PASSWORD_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const RESEND_VERIFICATION_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
 
 @Injectable()
 export class AuthService {
@@ -49,6 +52,7 @@ export class AuthService {
     const user = await this.usersService.create({
       email: input.email,
       passwordHash,
+      displayName: input.displayName,
       verificationToken: verificationTokenHash,
     });
 
@@ -116,6 +120,49 @@ export class AuthService {
       isEmailVerified: true,
       verificationToken: null,
     });
+    return true;
+  }
+
+  /** Idempotent: silently a no-op (still returns true) if the account is already verified — the frontend only shows this option while unverified, but a resolver shouldn't error on a harmless double-click/race. */
+  async resendVerificationEmail(user: User): Promise<boolean> {
+    if (user.isEmailVerified) {
+      return true;
+    }
+
+    // Server-side cooldown: verificationEmailSentAt is persisted, so this
+    // holds even across a page refresh or a second tab — the frontend's own
+    // countdown is just UX, this is the actual enforcement.
+    if (user.verificationEmailSentAt) {
+      const elapsedMs = Date.now() - user.verificationEmailSentAt.getTime();
+      if (elapsedMs < RESEND_VERIFICATION_COOLDOWN_MS) {
+        // Passed as an object (not just a message string) so the response
+        // body includes `statusCode` — @nestjs/apollo only maps an
+        // HttpException to a GraphQL extensions.status when it does (see
+        // apollo-base.driver.js's `isHttpException` check); a plain string
+        // response falls through as INTERNAL_SERVER_ERROR instead of 429.
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.TOO_MANY_REQUESTS,
+            message: 'Please wait before requesting another verification email',
+            error: 'Too Many Requests',
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
+
+    const { raw, hash } = generateOpaqueToken();
+    await this.usersService.update(user.id, {
+      verificationToken: hash,
+      verificationEmailSentAt: new Date(),
+    });
+
+    // Overwriting the stored hash means any link from a previous email
+    // stops working the moment a new one is requested — same one-active-
+    // token-at-a-time model as the reset-password token.
+    void this.mailService
+      .sendVerificationEmail(user.email, raw)
+      .catch(() => {});
     return true;
   }
 

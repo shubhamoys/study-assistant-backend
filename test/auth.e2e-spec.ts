@@ -17,6 +17,7 @@ interface GraphQLResponse<T> {
 
 const TEST_EMAIL = 'e2e-auth-test@example.com';
 const TEST_PASSWORD = 'password123';
+const TEST_DISPLAY_NAME = 'Test User';
 
 function gql(query: string) {
   return { query };
@@ -50,7 +51,7 @@ describe('Auth (e2e)', () => {
       .post('/graphql')
       .send(
         gql(
-          `mutation { register(input: { email: "not-an-email", password: "short" }) { accessToken } }`,
+          `mutation { register(input: { email: "not-an-email", password: "short", displayName: "${TEST_DISPLAY_NAME}" }) { accessToken } }`,
         ),
       );
 
@@ -62,13 +63,13 @@ describe('Auth (e2e)', () => {
       register: {
         accessToken: string;
         refreshToken: string;
-        user: { email: string; role: string };
+        user: { email: string; role: string; displayName: string };
       };
     }> = await request(app.getHttpServer())
       .post('/graphql')
       .send(
         gql(
-          `mutation { register(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}" }) { accessToken refreshToken user { email role } } }`,
+          `mutation { register(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}", displayName: "${TEST_DISPLAY_NAME}" }) { accessToken refreshToken user { email role displayName } } }`,
         ),
       );
 
@@ -77,7 +78,20 @@ describe('Auth (e2e)', () => {
     expect(res.body.data?.register.user).toEqual({
       email: TEST_EMAIL,
       role: 'USER',
+      displayName: TEST_DISPLAY_NAME,
     });
+  });
+
+  it('rejects registering without a display name', async () => {
+    const res: GraphQLResponse<null> = await request(app.getHttpServer())
+      .post('/graphql')
+      .send(
+        gql(
+          `mutation { register(input: { email: "not-registered-yet@example.com", password: "${TEST_PASSWORD}", displayName: "" }) { accessToken } }`,
+        ),
+      );
+
+    expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
   });
 
   it('rejects registering the same email twice', async () => {
@@ -85,7 +99,7 @@ describe('Auth (e2e)', () => {
       .post('/graphql')
       .send(
         gql(
-          `mutation { register(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}" }) { accessToken } }`,
+          `mutation { register(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}", displayName: "${TEST_DISPLAY_NAME}" }) { accessToken } }`,
         ),
       );
 
@@ -243,7 +257,7 @@ describe('Auth (e2e)', () => {
         .post('/graphql')
         .send(
           gql(
-            `mutation { register(input: { email: "${email}", password: "${TEST_PASSWORD}" }) { accessToken } }`,
+            `mutation { register(input: { email: "${email}", password: "${TEST_PASSWORD}", displayName: "${TEST_DISPLAY_NAME}" }) { accessToken } }`,
           ),
         );
 
@@ -269,6 +283,199 @@ describe('Auth (e2e)', () => {
         .send(gql(`mutation { verifyEmail(token: "not-a-real-token") }`));
 
       expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
+    });
+  });
+
+  describe('resendVerificationEmail', () => {
+    const email = 'e2e-resend-verify-test@example.com';
+
+    afterEach(async () => {
+      await userRepository.delete({ email });
+    });
+
+    it('resends while the account is unverified', async () => {
+      const sendSpy = jest
+        .spyOn(mailService, 'sendVerificationEmail')
+        .mockResolvedValue(undefined);
+
+      const registerRes: GraphQLResponse<{
+        register: { accessToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { register(input: { email: "${email}", password: "${TEST_PASSWORD}", displayName: "${TEST_DISPLAY_NAME}" }) { accessToken } }`,
+          ),
+        );
+      const { accessToken } = registerRes.body.data!.register;
+      sendSpy.mockClear(); // ignore the email registration itself already sent
+
+      const res: GraphQLResponse<{ resendVerificationEmail: boolean }> =
+        await request(app.getHttpServer())
+          .post('/graphql')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send(gql(`mutation { resendVerificationEmail }`));
+      expect(res.body.data?.resendVerificationEmail).toBe(true);
+      expect(sendSpy).toHaveBeenCalledWith(email, expect.any(String));
+
+      sendSpy.mockRestore();
+    });
+
+    it('sends a token that supersedes the one from registration', async () => {
+      const sendSpy = jest
+        .spyOn(mailService, 'sendVerificationEmail')
+        .mockResolvedValue(undefined);
+
+      const registerRes: GraphQLResponse<{
+        register: { accessToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { register(input: { email: "${email}", password: "${TEST_PASSWORD}", displayName: "${TEST_DISPLAY_NAME}" }) { accessToken } }`,
+          ),
+        );
+      const { accessToken } = registerRes.body.data!.register;
+      const registrationToken = sendSpy.mock.calls[0][1];
+
+      await request(app.getHttpServer())
+        .post('/graphql')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(gql(`mutation { resendVerificationEmail }`));
+      const resentToken = sendSpy.mock.calls[1][1];
+      sendSpy.mockRestore();
+
+      expect(resentToken).not.toBe(registrationToken);
+
+      const oldTokenRes: GraphQLResponse<null> = await request(
+        app.getHttpServer(),
+      )
+        .post('/graphql')
+        .send(gql(`mutation { verifyEmail(token: "${registrationToken}") }`));
+      expect(oldTokenRes.body.errors?.[0]?.extensions?.code).toBe(
+        'BAD_REQUEST',
+      );
+
+      const newTokenRes: GraphQLResponse<{ verifyEmail: boolean }> =
+        await request(app.getHttpServer())
+          .post('/graphql')
+          .send(gql(`mutation { verifyEmail(token: "${resentToken}") }`));
+      expect(newTokenRes.body.data?.verifyEmail).toBe(true);
+    });
+
+    it('is a no-op once the account is already verified', async () => {
+      const sendSpy = jest
+        .spyOn(mailService, 'sendVerificationEmail')
+        .mockResolvedValue(undefined);
+
+      const registerRes: GraphQLResponse<{
+        register: { accessToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { register(input: { email: "${email}", password: "${TEST_PASSWORD}", displayName: "${TEST_DISPLAY_NAME}" }) { accessToken } }`,
+          ),
+        );
+      const { accessToken } = registerRes.body.data!.register;
+      const rawToken = sendSpy.mock.calls[0][1];
+      sendSpy.mockClear();
+
+      await request(app.getHttpServer())
+        .post('/graphql')
+        .send(gql(`mutation { verifyEmail(token: "${rawToken}") }`));
+
+      const res: GraphQLResponse<{ resendVerificationEmail: boolean }> =
+        await request(app.getHttpServer())
+          .post('/graphql')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send(gql(`mutation { resendVerificationEmail }`));
+      expect(res.body.data?.resendVerificationEmail).toBe(true);
+      expect(sendSpy).not.toHaveBeenCalled();
+
+      sendSpy.mockRestore();
+    });
+
+    it('requires auth', async () => {
+      const res: GraphQLResponse<null> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(gql(`mutation { resendVerificationEmail }`));
+
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('UNAUTHENTICATED');
+    });
+
+    it('rejects a second resend within the 2-minute cooldown', async () => {
+      const sendSpy = jest
+        .spyOn(mailService, 'sendVerificationEmail')
+        .mockResolvedValue(undefined);
+
+      const registerRes: GraphQLResponse<{
+        register: { accessToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { register(input: { email: "${email}", password: "${TEST_PASSWORD}", displayName: "${TEST_DISPLAY_NAME}" }) { accessToken } }`,
+          ),
+        );
+      const { accessToken } = registerRes.body.data!.register;
+
+      await request(app.getHttpServer())
+        .post('/graphql')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(gql(`mutation { resendVerificationEmail }`));
+      sendSpy.mockClear();
+
+      const res: GraphQLResponse<null> = await request(app.getHttpServer())
+        .post('/graphql')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(gql(`mutation { resendVerificationEmail }`));
+
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('TOO_MANY_REQUESTS');
+      expect(sendSpy).not.toHaveBeenCalled();
+
+      sendSpy.mockRestore();
+    });
+
+    it('allows a resend once the cooldown window has elapsed', async () => {
+      const sendSpy = jest
+        .spyOn(mailService, 'sendVerificationEmail')
+        .mockResolvedValue(undefined);
+
+      const registerRes: GraphQLResponse<{
+        register: { accessToken: string };
+      }> = await request(app.getHttpServer())
+        .post('/graphql')
+        .send(
+          gql(
+            `mutation { register(input: { email: "${email}", password: "${TEST_PASSWORD}", displayName: "${TEST_DISPLAY_NAME}" }) { accessToken } }`,
+          ),
+        );
+      const { accessToken } = registerRes.body.data!.register;
+
+      await request(app.getHttpServer())
+        .post('/graphql')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(gql(`mutation { resendVerificationEmail }`));
+      sendSpy.mockClear();
+
+      // Simulate the cooldown having already elapsed rather than waiting 2
+      // real minutes in the test.
+      await userRepository.update(
+        { email },
+        { verificationEmailSentAt: new Date(Date.now() - 3 * 60 * 1000) },
+      );
+
+      const res: GraphQLResponse<{ resendVerificationEmail: boolean }> =
+        await request(app.getHttpServer())
+          .post('/graphql')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send(gql(`mutation { resendVerificationEmail }`));
+
+      expect(res.body.data?.resendVerificationEmail).toBe(true);
+      expect(sendSpy).toHaveBeenCalledWith(email, expect.any(String));
+
+      sendSpy.mockRestore();
     });
   });
 

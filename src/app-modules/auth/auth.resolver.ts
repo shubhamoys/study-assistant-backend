@@ -52,6 +52,14 @@ export class AuthResolver {
     return this.authService.verifyEmail(token);
   }
 
+  // Requires auth (default) — resends to whoever is currently logged in,
+  // not an arbitrary email address (no user-enumeration surface like
+  // forgotPassword needs, since you can only resend your own).
+  @Mutation(() => Boolean)
+  resendVerificationEmail(@CurrentUser() user: User): Promise<boolean> {
+    return this.authService.resendVerificationEmail(user);
+  }
+
   @Public()
   @Mutation(() => Boolean)
   forgotPassword(@Args('email') email: string): Promise<boolean> {

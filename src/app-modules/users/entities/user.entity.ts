@@ -51,6 +51,12 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   resetPasswordExpires!: Date | null;
 
+  // Set each time resendVerificationEmail is called (not on the initial
+  // registration email) — lets the resolver enforce a cooldown server-side
+  // even if the client refreshes or has stale local state.
+  @Column({ type: 'timestamptz', nullable: true })
+  verificationEmailSentAt!: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

@@ -20,6 +20,7 @@ export class UsersService {
   async create(data: {
     email: string;
     passwordHash: string;
+    displayName: string;
     verificationToken?: string;
   }): Promise<User> {
     const user = this.usersRepository.create(data);

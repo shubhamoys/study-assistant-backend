@@ -30,6 +30,11 @@ export class UserType {
   @Field(() => String, { nullable: true })
   avatarUrl!: string | null;
 
+  // Only meaningful while isEmailVerified is false — lets the frontend
+  // restore the resend cooldown countdown after a page refresh.
+  @Field(() => Date, { nullable: true })
+  verificationEmailSentAt!: Date | null;
+
   @Field()
   createdAt!: Date;
 }

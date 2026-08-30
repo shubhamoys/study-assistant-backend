@@ -52,7 +52,7 @@ describe('Study (e2e)', () => {
         .post('/graphql')
         .send(
           gql(
-            `mutation { register(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}" }) { accessToken } }`,
+            `mutation { register(input: { email: "${TEST_EMAIL}", password: "${TEST_PASSWORD}", displayName: "Test User" }) { accessToken } }`,
           ),
         );
     token = registerRes.body.data!.register.accessToken;

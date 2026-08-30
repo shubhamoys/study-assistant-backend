@@ -29,7 +29,18 @@ async function bootstrap() {
   // image in the browser. Local-storage dev stand-in for Cloudflare R2 (see
   // storage.config.ts) — R2 serves these directly from its own public URL
   // in production, this route won't exist there.
-  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads',
+    setHeaders: (res) => {
+      // Helmet's default Cross-Origin-Resource-Policy: same-origin (set
+      // above) blocks the frontend — a different origin/port in dev, and
+      // always in prod — from loading these in an <img> tag at all. This is
+      // the one route meant to be fetched cross-origin, so relax just this
+      // header here instead of weakening helmet's default for the app as a
+      // whole (e.g. the GraphQL endpoint keeps the stricter default).
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
+  });
 
   const isProd = config.get<string>('app.nodeEnv') === 'production';
   const allowedOrigins = config.get<string[]>('app.corsOrigins')!;
