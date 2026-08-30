@@ -7,10 +7,10 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Difficulty } from '../../../database/enums';
-import { DeckSortOrder } from './deck-sort-order.enum';
+import { LibrarySortOrder } from './library-sort-order.enum';
 
 @ArgsType()
-export class DecksArgs {
+export class MyLibraryArgs {
   @Field(() => ID, { nullable: true })
   @IsOptional()
   @IsUUID()
@@ -27,8 +27,8 @@ export class DecksArgs {
   @IsEnum(Difficulty)
   difficulty?: Difficulty;
 
-  @Field(() => DeckSortOrder, { nullable: true })
+  @Field(() => LibrarySortOrder, { nullable: true })
   @IsOptional()
-  @IsEnum(DeckSortOrder)
-  sort?: DeckSortOrder;
+  @IsEnum(LibrarySortOrder)
+  sort?: LibrarySortOrder;
 }

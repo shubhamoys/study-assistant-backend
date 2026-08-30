@@ -43,8 +43,14 @@ export class DeckType {
   @Field(() => CategoryType)
   category!: CategoryType;
 
+  @Field()
+  authorDisplayName!: string;
+
   @Field(() => Int)
   cardCount!: number;
+
+  @Field(() => Int)
+  estimatedStudyMinutes!: number;
 
   @Field(() => Int)
   downloadsCount!: number;

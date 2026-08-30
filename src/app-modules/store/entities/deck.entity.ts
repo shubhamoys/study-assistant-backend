@@ -11,7 +11,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Difficulty } from '../../../database/enums';
-import { Review } from '../../../database/entities/review.entity';
+import { Review } from '../../reviews/entities/review.entity';
 import { CardProgress } from '../../study/entities/card-progress.entity';
 import { Flashcard } from '../../study/entities/flashcard.entity';
 import { StudySession } from '../../study/entities/study-session.entity';
@@ -106,4 +106,10 @@ export class Deck {
    * the entity instance the way GraphQL's default field resolution expects.
    */
   cardCount?: number;
+
+  /** Same transient pattern as `cardCount` — read off the joined `author` relation by StoreService/LibraryService, not persisted. */
+  authorDisplayName?: string;
+
+  /** Same transient pattern as `cardCount` — a simple `cardCount * 2min` heuristic computed alongside it; no stored column (see DATABASE_DESIGN.md's note that this field was deliberately deferred until a screen actually needed it). */
+  estimatedStudyMinutes?: number;
 }

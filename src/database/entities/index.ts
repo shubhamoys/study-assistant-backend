@@ -7,17 +7,17 @@ import { CardProgress } from '../../app-modules/study/entities/card-progress.ent
 import { Flashcard } from '../../app-modules/study/entities/flashcard.entity';
 import { ReviewHistory } from '../../app-modules/study/entities/review-history.entity';
 import { StudySession } from '../../app-modules/study/entities/study-session.entity';
+import { Review } from '../../app-modules/reviews/entities/review.entity';
 import { Attachment } from './attachment.entity';
-import { Review } from './review.entity';
 
-export { Attachment, Review };
+export { Attachment };
 
 /**
  * Registered with both the running app (TypeOrmModule) and the CLI DataSource.
  * `User`/`RefreshToken`/`Category`/`Deck`/`Library`/`CardProgress`/`Flashcard`/
- * `ReviewHistory`/`StudySession` live in their owning app-modules — imported
- * here only to be listed for TypeORM; import the entity itself from its
- * module, not this barrel.
+ * `ReviewHistory`/`StudySession`/`Review` live in their owning app-modules —
+ * imported here only to be listed for TypeORM; import the entity itself from
+ * its module, not this barrel.
  */
 export const entities = [
   User,

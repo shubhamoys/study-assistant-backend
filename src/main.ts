@@ -1,4 +1,5 @@
 import { join } from 'path';
+import type { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -31,7 +32,7 @@ async function bootstrap() {
   // in production, this route won't exist there.
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads',
-    setHeaders: (res) => {
+    setHeaders: (res: Response) => {
       // Helmet's default Cross-Origin-Resource-Policy: same-origin (set
       // above) blocks the frontend — a different origin/port in dev, and
       // always in prod — from loading these in an <img> tag at all. This is

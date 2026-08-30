@@ -17,7 +17,7 @@ export class StoreResolver {
 
   @Query(() => [DeckType])
   decks(@Args() args: DecksArgs): Promise<Deck[]> {
-    return this.storeService.findDecks(args.categoryId);
+    return this.storeService.findDecks(args);
   }
 
   @Query(() => DeckType)

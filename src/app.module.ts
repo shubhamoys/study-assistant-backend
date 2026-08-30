@@ -18,6 +18,7 @@ import { UsersModule } from './app-modules/users/users.module';
 import { StoreModule } from './app-modules/store/store.module';
 import { LibraryModule } from './app-modules/library/library.module';
 import { StudyModule } from './app-modules/study/study.module';
+import { ReviewsModule } from './app-modules/reviews/reviews.module';
 
 @Module({
   imports: [
@@ -94,6 +95,7 @@ import { StudyModule } from './app-modules/study/study.module';
     StoreModule,
     LibraryModule,
     StudyModule,
+    ReviewsModule,
   ],
   providers: [
     {

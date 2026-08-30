@@ -14,11 +14,13 @@ import { Difficulty, UserRole } from '../enums';
 import { Category } from '../../app-modules/store/entities/category.entity';
 import { Deck } from '../../app-modules/store/entities/deck.entity';
 import { Flashcard } from '../../app-modules/study/entities/flashcard.entity';
+import { Review } from '../../app-modules/reviews/entities/review.entity';
 import { User } from '../../app-modules/users/entities/user.entity';
 
 async function main() {
   const adminEmail = requireEnv('SEED_ADMIN_EMAIL');
   const adminPassword = requireEnv('SEED_ADMIN_PASSWORD');
+  const reviewerPassword = requireEnv('SEED_REVIEWER_PASSWORD');
 
   await AppDataSource.initialize();
 
@@ -26,6 +28,7 @@ async function main() {
   const categoryRepository = AppDataSource.getRepository(Category);
   const deckRepository = AppDataSource.getRepository(Deck);
   const flashcardRepository = AppDataSource.getRepository(Flashcard);
+  const reviewRepository = AppDataSource.getRepository(Review);
 
   const passwordHash = await bcrypt.hash(adminPassword, 10);
 
@@ -64,7 +67,7 @@ async function main() {
   const languagesCategory = categories.find((c) => c.slug === 'languages')!;
   const medicineCategory = categories.find((c) => c.slug === 'medicine')!;
 
-  await seedDeck(deckRepository, flashcardRepository, {
+  const jsDeck = await seedDeck(deckRepository, flashcardRepository, {
     title: 'JavaScript Fundamentals',
     description: 'Core JavaScript concepts every web developer should know.',
     difficulty: Difficulty.BEGINNER,
@@ -106,7 +109,7 @@ async function main() {
     ],
   });
 
-  await seedDeck(deckRepository, flashcardRepository, {
+  const spanishDeck = await seedDeck(deckRepository, flashcardRepository, {
     title: 'Spanish Basics — Vocabulary',
     description: 'Everyday Spanish vocabulary for absolute beginners.',
     difficulty: Difficulty.BEGINNER,
@@ -124,7 +127,7 @@ async function main() {
     ],
   });
 
-  await seedDeck(deckRepository, flashcardRepository, {
+  const anatomyDeck = await seedDeck(deckRepository, flashcardRepository, {
     title: 'Anatomy 101',
     description: 'An introduction to the cardiovascular system.',
     difficulty: Difficulty.INTERMEDIATE,
@@ -158,9 +161,82 @@ async function main() {
     ],
   });
 
+  // Demo reviewers — so the Store isn't demoing an empty-ratings state.
+  // Dummy display content per the seed-data rule; the password is still
+  // env-sourced like the admin's, even though nothing currently needs to
+  // log in as either of them.
+  const reviewerPasswordHash = await bcrypt.hash(reviewerPassword, 10);
+  const reviewerDefinitions = [
+    { email: 'priya.demo@studyassistant.dev', displayName: 'Priya Patel' },
+    { email: 'marcus.demo@studyassistant.dev', displayName: 'Marcus Chen' },
+  ];
+  await userRepository.upsert(
+    reviewerDefinitions.map((reviewer) => ({
+      ...reviewer,
+      passwordHash: reviewerPasswordHash,
+      role: UserRole.USER,
+      isEmailVerified: true,
+    })),
+    ['email'],
+  );
+  const [priya, marcus] = await Promise.all(
+    reviewerDefinitions.map((reviewer) =>
+      userRepository.findOneByOrFail({ email: reviewer.email }),
+    ),
+  );
+
+  const reviewDefinitions = [
+    {
+      userId: priya.id,
+      deckId: jsDeck.id,
+      rating: 5,
+      comment: 'Clear and well organized — closures finally clicked for me.',
+    },
+    {
+      userId: marcus.id,
+      deckId: jsDeck.id,
+      rating: 4,
+      comment: 'Good refresher. Would love a few more cards on closures.',
+    },
+    {
+      userId: priya.id,
+      deckId: spanishDeck.id,
+      rating: 4,
+      comment: 'Solid basics deck for absolute beginners.',
+    },
+    {
+      userId: marcus.id,
+      deckId: anatomyDeck.id,
+      rating: 5,
+      comment: 'Great for exam prep, concise and accurate.',
+    },
+  ];
+  await reviewRepository.upsert(reviewDefinitions, ['userId', 'deckId']);
+
+  // Recompute each reviewed deck's aggregate rating directly, rather than
+  // reusing ReviewsService (this script has no Nest DI container) — same
+  // AVG/COUNT logic as ReviewsService.recomputeDeckRating.
+  for (const deck of [jsDeck, spanishDeck, anatomyDeck]) {
+    const { average, count } = await reviewRepository
+      .createQueryBuilder('review')
+      .select('AVG(review.rating)', 'average')
+      .addSelect('COUNT(*)', 'count')
+      .where('review.deckId = :deckId', { deckId: deck.id })
+      .getRawOne<{ average: string | null; count: string }>()
+      .then((raw) => ({
+        average: raw?.average ? Number(raw.average) : 0,
+        count: Number(raw?.count ?? 0),
+      }));
+    await deckRepository.update(deck.id, {
+      ratingAverage: average,
+      ratingCount: count,
+    });
+  }
+
   console.log('Seed complete:', {
     admin: adminUser.email,
     categories: categories.map((c) => c.slug),
+    reviewers: reviewerDefinitions.map((r) => r.email),
   });
 
   await AppDataSource.destroy();
