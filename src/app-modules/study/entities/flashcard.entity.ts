@@ -10,7 +10,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Attachment } from '../../../database/entities/attachment.entity';
+import { Attachment } from '../../attachments/entities/attachment.entity';
 import { CardProgress } from './card-progress.entity';
 import { ReviewHistory } from './review-history.entity';
 import { Deck } from '../../store/entities/deck.entity';

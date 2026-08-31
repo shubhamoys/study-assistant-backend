@@ -19,6 +19,7 @@ import { StoreModule } from './app-modules/store/store.module';
 import { LibraryModule } from './app-modules/library/library.module';
 import { StudyModule } from './app-modules/study/study.module';
 import { ReviewsModule } from './app-modules/reviews/reviews.module';
+import { AttachmentsModule } from './app-modules/attachments/attachments.module';
 
 @Module({
   imports: [
@@ -96,6 +97,7 @@ import { ReviewsModule } from './app-modules/reviews/reviews.module';
     LibraryModule,
     StudyModule,
     ReviewsModule,
+    AttachmentsModule,
   ],
   providers: [
     {

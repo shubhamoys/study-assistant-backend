@@ -9,7 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { UserRole } from '../../../database/enums';
-import { Attachment } from '../../../database/entities/attachment.entity';
+import { Attachment } from '../../attachments/entities/attachment.entity';
 import { Review } from '../../reviews/entities/review.entity';
 import { RefreshToken } from '../../auth/entities/refresh-token.entity';
 import { Deck } from '../../store/entities/deck.entity';

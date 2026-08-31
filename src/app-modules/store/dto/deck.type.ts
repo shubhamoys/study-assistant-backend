@@ -12,15 +12,19 @@ import { CategoryType } from './category.type';
 registerEnumType(Difficulty, { name: 'Difficulty' });
 
 /**
- * Public GraphQL shape of a deck for Store/Library browsing. Deliberately
- * excludes `authorId`/`author` (no author-facing UI until Phase 2 custom
- * decks) and `flashcards` (card content is only exposed once study starts,
- * checkpoint 3) — `cardCount` is enough for browsing.
+ * Public GraphQL shape of a deck for Store/Library browsing. Still excludes
+ * `flashcards` (card content is only exposed once study starts, via
+ * `nextCard`, or to the owner via `deckFlashcards`) — `cardCount` is enough
+ * for browsing. `authorId` is exposed (checkpoint 3, custom decks) purely so
+ * the frontend can show Edit/Delete on decks the current user owns.
  */
 @ObjectType('Deck')
 export class DeckType {
   @Field(() => ID)
   id!: string;
+
+  @Field(() => ID)
+  authorId!: string;
 
   @Field()
   title!: string;

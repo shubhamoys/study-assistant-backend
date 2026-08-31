@@ -1,7 +1,15 @@
-import { Args, ID, Query, Resolver } from '@nestjs/graphql';
+import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User } from '../users/entities/user.entity';
+import { Flashcard } from '../study/entities/flashcard.entity';
 import { CategoryType } from './dto/category.type';
+import { CreateDeckInput } from './dto/create-deck.input';
+import { CreateFlashcardInput } from './dto/create-flashcard.input';
 import { DecksArgs } from './dto/decks.args';
 import { DeckType } from './dto/deck.type';
+import { FlashcardType } from './dto/flashcard.type';
+import { UpdateDeckInput } from './dto/update-deck.input';
+import { UpdateFlashcardInput } from './dto/update-flashcard.input';
 import { Category } from './entities/category.entity';
 import { Deck } from './entities/deck.entity';
 import { StoreService } from './store.service';
@@ -23,5 +31,68 @@ export class StoreResolver {
   @Query(() => DeckType)
   deck(@Args('id', { type: () => ID }) id: string): Promise<Deck> {
     return this.storeService.findDeckById(id);
+  }
+
+  @Query(() => [DeckType])
+  myDecks(@CurrentUser() user: User): Promise<Deck[]> {
+    return this.storeService.findMyDecks(user.id);
+  }
+
+  @Mutation(() => DeckType)
+  createDeck(
+    @Args('input') input: CreateDeckInput,
+    @CurrentUser() user: User,
+  ): Promise<Deck> {
+    return this.storeService.createDeck(user.id, input);
+  }
+
+  @Mutation(() => DeckType)
+  updateDeck(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('input') input: UpdateDeckInput,
+    @CurrentUser() user: User,
+  ): Promise<Deck> {
+    return this.storeService.updateDeck(user.id, id, input);
+  }
+
+  @Mutation(() => Boolean)
+  deleteDeck(
+    @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user: User,
+  ): Promise<boolean> {
+    return this.storeService.deleteDeck(user.id, id);
+  }
+
+  @Query(() => [FlashcardType])
+  deckFlashcards(
+    @Args('deckId', { type: () => ID }) deckId: string,
+    @CurrentUser() user: User,
+  ): Promise<Flashcard[]> {
+    return this.storeService.findDeckFlashcards(user.id, deckId);
+  }
+
+  @Mutation(() => FlashcardType)
+  createFlashcard(
+    @Args('input') input: CreateFlashcardInput,
+    @CurrentUser() user: User,
+  ): Promise<Flashcard> {
+    return this.storeService.createFlashcard(user.id, input);
+  }
+
+  @Mutation(() => FlashcardType)
+  updateFlashcard(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('input') input: UpdateFlashcardInput,
+    @CurrentUser() user: User,
+  ): Promise<Flashcard> {
+    return this.storeService.updateFlashcard(user.id, id, input);
+  }
+
+  @Mutation(() => Boolean)
+  deleteFlashcard(
+    @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user: User,
+  ): Promise<boolean> {
+    return this.storeService.deleteFlashcard(user.id, id);
   }
 }
