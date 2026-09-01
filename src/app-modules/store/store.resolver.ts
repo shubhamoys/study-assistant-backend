@@ -29,8 +29,11 @@ export class StoreResolver {
   }
 
   @Query(() => DeckType)
-  deck(@Args('id', { type: () => ID }) id: string): Promise<Deck> {
-    return this.storeService.findDeckById(id);
+  deck(
+    @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Deck> {
+    return this.storeService.findDeckById(id, user.id);
   }
 
   @Query(() => [DeckType])

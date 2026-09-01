@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Flashcard } from '../study/entities/flashcard.entity';
+import { Library } from '../library/entities/library.entity';
 import { Difficulty } from '../../database/enums';
 import { Category } from './entities/category.entity';
 import { Deck } from './entities/deck.entity';
@@ -30,6 +31,8 @@ export class StoreService {
     @InjectRepository(Deck) private readonly deckRepository: Repository<Deck>,
     @InjectRepository(Flashcard)
     private readonly flashcardRepository: Repository<Flashcard>,
+    @InjectRepository(Library)
+    private readonly libraryRepository: Repository<Library>,
   ) {}
 
   findAllCategories(): Promise<Category[]> {
@@ -43,10 +46,22 @@ export class StoreService {
     return this.withComputedFields(qb);
   }
 
-  async findDeckById(id: string): Promise<Deck> {
-    const qb = this.deckQueryBuilder()
-      .where('deck.id = :id', { id })
-      .andWhere('deck.isPublic = true');
+  /**
+   * `viewerId` lets the deck's own author fetch it even when it's private
+   * (every user-created deck — see `createDeck`'s comment) — anyone else
+   * still only ever sees it if `isPublic`. Without a viewer (shouldn't
+   * happen — every resolver that calls this requires auth), only public
+   * decks are visible.
+   */
+  async findDeckById(id: string, viewerId?: string): Promise<Deck> {
+    const qb = this.deckQueryBuilder().where('deck.id = :id', { id });
+    if (viewerId) {
+      qb.andWhere('(deck.isPublic = true OR deck.authorId = :viewerId)', {
+        viewerId,
+      });
+    } else {
+      qb.andWhere('deck.isPublic = true');
+    }
     const [deck] = await this.withComputedFields(qb);
     if (!deck) {
       throw new NotFoundException('Deck not found');
@@ -70,13 +85,29 @@ export class StoreService {
         categoryId: input.categoryId,
         difficulty: input.difficulty,
         authorId: userId,
-        // Every user-created deck is free and immediately public — no
-        // draft/publish flow, no pricing UI, until Phase 4 actually does
-        // something with a price.
-        isPublic: true,
+        // Every deck created through this mutation is a personal/custom
+        // deck — private to its author, never shown in Store browsing or
+        // addable by anyone else. This is unconditional, regardless of the
+        // caller's role: an admin using this same "create deck" flow still
+        // only gets a private deck. `isPublic: true` is reserved for
+        // decks made through the (not-yet-built) Phase 3 admin panel — the
+        // three seeded decks are the only `isPublic: true` decks that
+        // exist today, and they're written directly by the seeder, not
+        // through this service method. No draft/publish flow, no pricing
+        // UI — always free — until Phase 4 does something with a price.
+        isPublic: false,
         isFree: true,
         price: 0,
       }),
+    );
+    // A private deck is otherwise unreachable by its own creator (it won't
+    // show up in Store browsing even for them) — auto-adding it to their
+    // library means it's immediately visible on /library and studyable,
+    // without a separate "now go add your own deck" step. Not counted as
+    // a download (see LibraryService.addDeck's comment on what downloads
+    // means) — this bypasses that path entirely on purpose.
+    await this.libraryRepository.save(
+      this.libraryRepository.create({ userId, deckId: saved.id }),
     );
     return this.findOwnedDeckWithComputedFields(userId, saved.id);
   }

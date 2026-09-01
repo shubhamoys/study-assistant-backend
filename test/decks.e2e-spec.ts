@@ -149,6 +149,46 @@ describe('Decks (e2e)', () => {
       expect(res.body.data!.myDecks.some((d) => d.id === deckId)).toBe(true);
     });
 
+    it('is private — invisible in the public decks browse, even to its own author', async () => {
+      const res: GraphQLResponse<{ decks: { id: string }[] }> = await authedAs(
+        tokenA,
+        `{ decks { id } }`,
+      );
+      expect(res.body.data!.decks.some((d) => d.id === deckId)).toBe(false);
+    });
+
+    it("is auto-added to the creator's library on creation", async () => {
+      const res: GraphQLResponse<{ myLibrary: { deck: { id: string } }[] }> =
+        await authedAs(tokenA, `{ myLibrary { deck { id } } }`);
+      expect(
+        res.body.data!.myLibrary.some((entry) => entry.deck.id === deckId),
+      ).toBe(true);
+    });
+
+    it('lets the owner fetch it via deck(id) despite being private', async () => {
+      const res: GraphQLResponse<{ deck: { id: string } }> = await authedAs(
+        tokenA,
+        `{ deck(id: "${deckId}") { id } }`,
+      );
+      expect(res.body.data!.deck.id).toBe(deckId);
+    });
+
+    it('hides it from another user via deck(id)', async () => {
+      const res: GraphQLResponse<null> = await authedAs(
+        tokenB,
+        `{ deck(id: "${deckId}") { id } }`,
+      );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('NOT_FOUND');
+    });
+
+    it("rejects another user's addDeckToLibrary on it", async () => {
+      const res: GraphQLResponse<null> = await authedAs(
+        tokenB,
+        `mutation { addDeckToLibrary(deckId: "${deckId}") { id } }`,
+      );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('NOT_FOUND');
+    });
+
     it("rejects updating another user's deck", async () => {
       const res: GraphQLResponse<null> = await authedAs(
         tokenB,

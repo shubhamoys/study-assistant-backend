@@ -42,9 +42,16 @@ export class LibraryService {
   }
 
   async addDeck(userId: string, deckId: string): Promise<Library> {
-    const deck = await this.deckRepository.findOneBy({
-      id: deckId,
-      isPublic: true,
+    // A deck is addable if it's public (Store-browsable, e.g. a seeded
+    // system deck), or if it's the caller's own private/custom deck —
+    // `createDeck` already auto-enrolls the author, so this branch mainly
+    // matters if that enrollment was ever removed. Anyone else's private
+    // deck is neither, so this still 404s the same as "doesn't exist."
+    const deck = await this.deckRepository.findOne({
+      where: [
+        { id: deckId, isPublic: true },
+        { id: deckId, authorId: userId },
+      ],
     });
     if (!deck) {
       throw new NotFoundException('Deck not found');
