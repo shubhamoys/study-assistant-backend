@@ -126,7 +126,7 @@ describe('Decks (e2e)', () => {
         };
       }> = await authedAs(
         tokenA,
-        `mutation { createDeck(input: { title: "E2E Test Deck", description: "A deck", categoryId: "${categoryId}", difficulty: BEGINNER }) { id title authorId isFree price } }`,
+        `mutation { createDeck(input: { title: "E2E Test Deck", description: "A deck", categoryId: "${categoryId}" }) { id title authorId isFree price } }`,
       );
 
       expect(res.body.data!.createDeck.title).toBe('E2E Test Deck');
@@ -138,7 +138,7 @@ describe('Decks (e2e)', () => {
     it('rejects an empty title', async () => {
       const res: GraphQLResponse<null> = await authedAs(
         tokenA,
-        `mutation { createDeck(input: { title: "", categoryId: "${categoryId}", difficulty: BEGINNER }) { id } }`,
+        `mutation { createDeck(input: { title: "", categoryId: "${categoryId}" }) { id } }`,
       );
       expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
     });
@@ -239,6 +239,84 @@ describe('Decks (e2e)', () => {
       });
       expect(rawDeck?.deletedAt).not.toBeNull();
     });
+
+    it('creates a deck with no category and no difficulty', async () => {
+      const res: GraphQLResponse<{
+        createDeck: { id: string; category: { id: string } | null };
+      }> = await authedAs(
+        tokenA,
+        `mutation { createDeck(input: { title: "Uncategorized Deck" }) { id difficulty category { id } } }`,
+      );
+      expect(res.body.data!.createDeck.category).toBeNull();
+      const raw = await deckRepository.findOneBy({
+        id: res.body.data!.createDeck.id,
+      });
+      expect(raw?.difficulty).toBeNull();
+    });
+  });
+
+  describe('importDeck', () => {
+    it('creates a private deck with its flashcards in one call', async () => {
+      const res: GraphQLResponse<{
+        importDeck: { id: string; title: string; authorId: string };
+      }> = await authedAs(
+        tokenA,
+        `mutation { importDeck(input: { title: "Imported Deck", description: "From a file", categoryId: "${categoryId}", flashcards: [{ front: "Q1", back: "A1" }, { front: "Q2", back: "A2", orderIndex: 5 }] }) { id title authorId } }`,
+      );
+      expect(res.body.data!.importDeck.title).toBe('Imported Deck');
+      const deckId = res.body.data!.importDeck.id;
+
+      const cardsRes: GraphQLResponse<{
+        deckFlashcards: { front: string; orderIndex: number }[];
+      }> = await authedAs(
+        tokenA,
+        `{ deckFlashcards(deckId: "${deckId}") { front orderIndex } }`,
+      );
+      const cards = cardsRes.body.data!.deckFlashcards;
+      expect(cards).toHaveLength(2);
+      expect(cards.find((c) => c.front === 'Q1')?.orderIndex).toBe(0);
+      expect(cards.find((c) => c.front === 'Q2')?.orderIndex).toBe(5);
+
+      const libraryRes: GraphQLResponse<{
+        myLibrary: { deck: { id: string } }[];
+      }> = await authedAs(tokenA, `{ myLibrary { deck { id } } }`);
+      expect(
+        libraryRes.body.data!.myLibrary.some(
+          (entry) => entry.deck.id === deckId,
+        ),
+      ).toBe(true);
+
+      const browseRes: GraphQLResponse<{ decks: { id: string }[] }> =
+        await authedAs(tokenA, `{ decks { id } }`);
+      expect(browseRes.body.data!.decks.some((d) => d.id === deckId)).toBe(
+        false,
+      );
+    });
+
+    it('imports a deck with no flashcards', async () => {
+      const res: GraphQLResponse<{ importDeck: { id: string } }> =
+        await authedAs(
+          tokenA,
+          `mutation { importDeck(input: { title: "Empty Import", flashcards: [] }) { id } }`,
+        );
+      expect(res.body.data!.importDeck.id).toBeTruthy();
+    });
+
+    it('rejects an empty title', async () => {
+      const res: GraphQLResponse<null> = await authedAs(
+        tokenA,
+        `mutation { importDeck(input: { title: "", flashcards: [] }) { id } }`,
+      );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
+    });
+
+    it('rejects a flashcard with an empty front', async () => {
+      const res: GraphQLResponse<null> = await authedAs(
+        tokenA,
+        `mutation { importDeck(input: { title: "Bad Import", flashcards: [{ front: "", back: "A1" }] }) { id } }`,
+      );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
+    });
   });
 
   describe('createFlashcard / updateFlashcard / deleteFlashcard', () => {
@@ -249,7 +327,7 @@ describe('Decks (e2e)', () => {
       const res: GraphQLResponse<{ createDeck: { id: string } }> =
         await authedAs(
           tokenA,
-          `mutation { createDeck(input: { title: "Flashcard Test Deck", categoryId: "${categoryId}", difficulty: BEGINNER }) { id } }`,
+          `mutation { createDeck(input: { title: "Flashcard Test Deck", categoryId: "${categoryId}" }) { id } }`,
         );
       deckId = res.body.data!.createDeck.id;
     });

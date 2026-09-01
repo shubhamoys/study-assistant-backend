@@ -9,6 +9,7 @@ import { Deck } from './entities/deck.entity';
 import { CreateDeckInput } from './dto/create-deck.input';
 import { CreateFlashcardInput } from './dto/create-flashcard.input';
 import { DeckSortOrder } from './dto/deck-sort-order.enum';
+import { ImportDeckInput } from './dto/import-deck.input';
 import { UpdateDeckInput } from './dto/update-deck.input';
 import { UpdateFlashcardInput } from './dto/update-flashcard.input';
 
@@ -77,39 +78,96 @@ export class StoreService {
   }
 
   async createDeck(userId: string, input: CreateDeckInput): Promise<Deck> {
+    const saved = await this.createPersonalDeck(userId, {
+      title: input.title,
+      description: input.description,
+      coverUrl: input.coverUrl,
+      categoryId: input.categoryId,
+      // A custom deck never has a difficulty — removed entirely from this
+      // input (see CreateDeckInput's comment). Still nullable on the column
+      // for a future admin-panel deck-creation path.
+      difficulty: null,
+    });
+    return this.findOwnedDeckWithComputedFields(userId, saved.id);
+  }
+
+  /**
+   * The deck side of importing an exported deck file (see
+   * `src/lib/deck-export.ts` in the frontend) — same private-deck rules as
+   * `createDeck`, plus a one-shot batch insert of the card list it carries.
+   * `difficulty` IS accepted here (unlike CreateDeckInput) since an export
+   * made before difficulty was removed from deck creation may still carry
+   * one, and there's no reason to throw that away on import.
+   */
+  async importDeck(userId: string, input: ImportDeckInput): Promise<Deck> {
+    const saved = await this.createPersonalDeck(userId, {
+      title: input.title,
+      description: input.description,
+      coverUrl: input.coverUrl,
+      categoryId: input.categoryId,
+      difficulty: input.difficulty ?? null,
+    });
+    if (input.flashcards.length > 0) {
+      await this.flashcardRepository.save(
+        input.flashcards.map((card, index) =>
+          this.flashcardRepository.create({
+            deckId: saved.id,
+            front: card.front,
+            back: card.back,
+            orderIndex: card.orderIndex ?? index,
+          }),
+        ),
+      );
+    }
+    return this.findOwnedDeckWithComputedFields(userId, saved.id);
+  }
+
+  /**
+   * Shared by `createDeck` and `importDeck` — every deck made through either
+   * mutation is a personal/custom deck: private to its author, never shown
+   * in Store browsing or addable by anyone else. This is unconditional,
+   * regardless of the caller's role — an admin using either of these same
+   * flows still only gets a private deck. `isPublic: true` is reserved for
+   * decks made through the (not-yet-built) Phase 3 admin panel — the three
+   * seeded decks are the only `isPublic: true` decks that exist today, and
+   * they're written directly by the seeder, not through this service. No
+   * draft/publish flow, no pricing UI — always free — until Phase 4 does
+   * something with a price.
+   *
+   * A private deck is otherwise unreachable by its own creator (it won't
+   * show up in Store browsing even for them) — auto-adding it to their
+   * library means it's immediately visible on /library and studyable,
+   * without a separate "now go add your own deck" step. Not counted as a
+   * download (see LibraryService.addDeck's comment on what downloads means)
+   * — this bypasses that path entirely on purpose.
+   */
+  private async createPersonalDeck(
+    userId: string,
+    fields: {
+      title: string;
+      description?: string;
+      coverUrl?: string;
+      categoryId?: string;
+      difficulty: Difficulty | null;
+    },
+  ): Promise<Deck> {
     const saved = await this.deckRepository.save(
       this.deckRepository.create({
-        title: input.title,
-        description: input.description ?? null,
-        coverUrl: input.coverUrl ?? null,
-        categoryId: input.categoryId,
-        difficulty: input.difficulty,
+        title: fields.title,
+        description: fields.description ?? null,
+        coverUrl: fields.coverUrl ?? null,
+        categoryId: fields.categoryId ?? null,
+        difficulty: fields.difficulty,
         authorId: userId,
-        // Every deck created through this mutation is a personal/custom
-        // deck — private to its author, never shown in Store browsing or
-        // addable by anyone else. This is unconditional, regardless of the
-        // caller's role: an admin using this same "create deck" flow still
-        // only gets a private deck. `isPublic: true` is reserved for
-        // decks made through the (not-yet-built) Phase 3 admin panel — the
-        // three seeded decks are the only `isPublic: true` decks that
-        // exist today, and they're written directly by the seeder, not
-        // through this service method. No draft/publish flow, no pricing
-        // UI — always free — until Phase 4 does something with a price.
         isPublic: false,
         isFree: true,
         price: 0,
       }),
     );
-    // A private deck is otherwise unreachable by its own creator (it won't
-    // show up in Store browsing even for them) — auto-adding it to their
-    // library means it's immediately visible on /library and studyable,
-    // without a separate "now go add your own deck" step. Not counted as
-    // a download (see LibraryService.addDeck's comment on what downloads
-    // means) — this bypasses that path entirely on purpose.
     await this.libraryRepository.save(
       this.libraryRepository.create({ userId, deckId: saved.id }),
     );
-    return this.findOwnedDeckWithComputedFields(userId, saved.id);
+    return saved;
   }
 
   async updateDeck(
@@ -125,7 +183,6 @@ export class StoreService {
       }),
       ...(input.coverUrl !== undefined && { coverUrl: input.coverUrl }),
       ...(input.categoryId !== undefined && { categoryId: input.categoryId }),
-      ...(input.difficulty !== undefined && { difficulty: input.difficulty }),
     });
     return this.findOwnedDeckWithComputedFields(userId, deckId);
   }
@@ -133,10 +190,18 @@ export class StoreService {
   async deleteDeck(userId: string, deckId: string): Promise<boolean> {
     await this.findOwnedDeckOrFail(userId, deckId);
     // Soft delete — Deck.deletedAt already exists for this; TypeORM's query
-    // builder excludes soft-deleted rows by default, so `decks`/`deck(id)`/
-    // `myLibrary` need no extra filtering (see DATABASE_DESIGN.md, which
-    // documents this as the intended mechanism).
+    // builder excludes soft-deleted rows by default, so `decks`/`deck(id)`
+    // need no extra filtering (see DATABASE_DESIGN.md, which documents this
+    // as the intended mechanism). `Library.deck`'s `onDelete: 'CASCADE'`
+    // does NOT help here — that only fires on a real `DELETE`, and this is
+    // an `UPDATE ... SET deletedAt`, so every library entry pointing at this
+    // deck (including the owner's own auto-enroll one, see createDeck)
+    // would otherwise dangle: `LibraryService.withComputedFields`'s
+    // left-joined `deck` comes back null for it and throws. Deleting those
+    // rows here is the fix — it also matches what's already promised
+    // elsewhere ("stops appearing anywhere... the instant you delete it").
     await this.deckRepository.softDelete(deckId);
+    await this.libraryRepository.delete({ deckId });
     return true;
   }
 

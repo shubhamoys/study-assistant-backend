@@ -1,13 +1,12 @@
 import { Field, ID, InputType } from '@nestjs/graphql';
-import {
-  IsEnum,
-  IsOptional,
-  IsUUID,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
-import { Difficulty } from '../../../database/enums';
+import { IsOptional, IsUUID, MaxLength, MinLength } from 'class-validator';
 
+/**
+ * Every deck created through this input is a custom/user deck — private,
+ * no difficulty (removed entirely, see the Phase 3 decision-log entry),
+ * category optional. A future admin-panel deck-creation input can still set
+ * `difficulty`/a required `categoryId` on the same nullable columns.
+ */
 @InputType()
 export class CreateDeckInput {
   @Field()
@@ -25,11 +24,8 @@ export class CreateDeckInput {
   @MaxLength(512)
   coverUrl?: string;
 
-  @Field(() => ID)
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
   @IsUUID()
-  categoryId!: string;
-
-  @Field(() => Difficulty)
-  @IsEnum(Difficulty)
-  difficulty!: Difficulty;
+  categoryId?: string;
 }

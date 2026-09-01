@@ -37,8 +37,13 @@ export class Deck {
   @Column({ default: false })
   isPublic!: boolean;
 
-  @Column({ type: 'enum', enum: Difficulty, default: Difficulty.BEGINNER })
-  difficulty!: Difficulty;
+  /**
+   * Nullable — required when this was the only deck-creation path, but a
+   * custom/user-created deck no longer sets it (see the Phase 3 decision-log
+   * entry). Still settable for public decks made through the admin panel.
+   */
+  @Column({ type: 'enum', enum: Difficulty, nullable: true })
+  difficulty!: Difficulty | null;
 
   @Column({ default: true })
   isFree!: boolean;
@@ -55,15 +60,17 @@ export class Deck {
   @JoinColumn({ name: 'authorId' })
   author!: User;
 
+  /** Nullable — optional for a custom/user-created deck (see the Phase 3 decision-log entry). */
   @Index()
-  @Column({ type: 'uuid' })
-  categoryId!: string;
+  @Column({ type: 'uuid', nullable: true })
+  categoryId!: string | null;
 
   @ManyToOne(() => Category, (category) => category.decks, {
     onDelete: 'RESTRICT',
+    nullable: true,
   })
   @JoinColumn({ name: 'categoryId' })
-  category!: Category;
+  category!: Category | null;
 
   @Column({ type: 'int', default: 0 })
   downloadsCount!: number;

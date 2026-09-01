@@ -35,8 +35,8 @@ export class DeckType {
   @Field(() => String, { nullable: true })
   coverUrl!: string | null;
 
-  @Field(() => Difficulty)
-  difficulty!: Difficulty;
+  @Field(() => Difficulty, { nullable: true })
+  difficulty!: Difficulty | null;
 
   @Field()
   isFree!: boolean;
@@ -44,8 +44,8 @@ export class DeckType {
   @Field(() => Int)
   price!: number;
 
-  @Field(() => CategoryType)
-  category!: CategoryType;
+  @Field(() => CategoryType, { nullable: true })
+  category!: CategoryType | null;
 
   @Field()
   authorDisplayName!: string;

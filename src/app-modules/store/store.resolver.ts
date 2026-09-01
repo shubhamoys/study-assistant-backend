@@ -8,6 +8,7 @@ import { CreateFlashcardInput } from './dto/create-flashcard.input';
 import { DecksArgs } from './dto/decks.args';
 import { DeckType } from './dto/deck.type';
 import { FlashcardType } from './dto/flashcard.type';
+import { ImportDeckInput } from './dto/import-deck.input';
 import { UpdateDeckInput } from './dto/update-deck.input';
 import { UpdateFlashcardInput } from './dto/update-flashcard.input';
 import { Category } from './entities/category.entity';
@@ -47,6 +48,14 @@ export class StoreResolver {
     @CurrentUser() user: User,
   ): Promise<Deck> {
     return this.storeService.createDeck(user.id, input);
+  }
+
+  @Mutation(() => DeckType)
+  importDeck(
+    @Args('input') input: ImportDeckInput,
+    @CurrentUser() user: User,
+  ): Promise<Deck> {
+    return this.storeService.importDeck(user.id, input);
   }
 
   @Mutation(() => DeckType)

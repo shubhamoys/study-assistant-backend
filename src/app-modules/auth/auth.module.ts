@@ -11,6 +11,7 @@ import { AuthResolver } from './auth.resolver';
 import { AuthService } from './auth.service';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -36,6 +37,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     // Global: every resolver requires auth unless marked @Public(). Registered
     // here (not AppModule) so this module fully owns the auth concern.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Runs after JwtAuthGuard (registration order = execution order for
+    // multiple APP_GUARD providers) — needs `request.user` populated first.
+    // A no-op for any resolver without @Roles() (see the guard itself).
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
   exports: [JwtModule],
 })

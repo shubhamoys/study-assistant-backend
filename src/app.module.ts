@@ -20,6 +20,7 @@ import { LibraryModule } from './app-modules/library/library.module';
 import { StudyModule } from './app-modules/study/study.module';
 import { ReviewsModule } from './app-modules/reviews/reviews.module';
 import { AttachmentsModule } from './app-modules/attachments/attachments.module';
+import { AdminModule } from './app-modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -98,6 +99,7 @@ import { AttachmentsModule } from './app-modules/attachments/attachments.module'
     StudyModule,
     ReviewsModule,
     AttachmentsModule,
+    AdminModule,
   ],
   providers: [
     {

@@ -1,13 +1,7 @@
 import { Field, ID, InputType } from '@nestjs/graphql';
-import {
-  IsEnum,
-  IsOptional,
-  IsUUID,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
-import { Difficulty } from '../../../database/enums';
+import { IsOptional, IsUUID, MaxLength, MinLength } from 'class-validator';
 
+/** No `difficulty` — a custom deck never has one, see CreateDeckInput's comment. */
 @InputType()
 export class UpdateDeckInput {
   @Field(() => String, { nullable: true })
@@ -30,9 +24,4 @@ export class UpdateDeckInput {
   @IsOptional()
   @IsUUID()
   categoryId?: string;
-
-  @Field(() => Difficulty, { nullable: true })
-  @IsOptional()
-  @IsEnum(Difficulty)
-  difficulty?: Difficulty;
 }
