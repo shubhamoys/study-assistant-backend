@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Flashcard } from '../study/entities/flashcard.entity';
@@ -6,16 +10,27 @@ import { Library } from '../library/entities/library.entity';
 import { Difficulty } from '../../database/enums';
 import { Category } from './entities/category.entity';
 import { Deck } from './entities/deck.entity';
+import { CreateCategoryInput } from './dto/create-category.input';
 import { CreateDeckInput } from './dto/create-deck.input';
 import { CreateFlashcardInput } from './dto/create-flashcard.input';
 import { DeckSortOrder } from './dto/deck-sort-order.enum';
 import { ImportDeckInput } from './dto/import-deck.input';
+import { UpdateCategoryInput } from './dto/update-category.input';
 import { UpdateDeckInput } from './dto/update-deck.input';
 import { UpdateFlashcardInput } from './dto/update-flashcard.input';
 
 // Minutes assumed per card for a first-pass study session — a simple,
 // documented heuristic (see Deck.estimatedStudyMinutes).
 const ESTIMATED_MINUTES_PER_CARD = 2;
+
+/** Matches the seeded categories' slug format ("computer-science") — see database/seeds/seed.ts. */
+function slugify(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
 
 export interface DeckQueryOptions {
   categoryId?: string;
@@ -38,6 +53,67 @@ export class StoreService {
 
   findAllCategories(): Promise<Category[]> {
     return this.categoryRepository.find({ order: { name: 'ASC' } });
+  }
+
+  async createCategory(input: CreateCategoryInput): Promise<Category> {
+    const slug = slugify(input.name);
+    await this.assertCategoryNameAvailable(input.name, slug);
+    return this.categoryRepository.save(
+      this.categoryRepository.create({
+        name: input.name,
+        slug,
+        description: input.description ?? null,
+      }),
+    );
+  }
+
+  async updateCategory(
+    id: string,
+    input: UpdateCategoryInput,
+  ): Promise<Category> {
+    const category = await this.categoryRepository.findOneBy({ id });
+    if (!category) {
+      throw new NotFoundException('Category not found');
+    }
+    if (input.name !== undefined) {
+      const slug = slugify(input.name);
+      await this.assertCategoryNameAvailable(input.name, slug, id);
+      category.name = input.name;
+      category.slug = slug;
+    }
+    if (input.description !== undefined) {
+      category.description = input.description;
+    }
+    return this.categoryRepository.save(category);
+  }
+
+  /**
+   * `categoryId` is nullable (see the Phase 3 decision-log entry) precisely
+   * so this can always succeed — every deck that referenced this category
+   * becomes uncategorized rather than the delete being blocked by the FK's
+   * `onDelete: RESTRICT` until an admin manually reassigns each one.
+   */
+  async deleteCategory(id: string): Promise<boolean> {
+    const category = await this.categoryRepository.findOneBy({ id });
+    if (!category) {
+      throw new NotFoundException('Category not found');
+    }
+    await this.deckRepository.update({ categoryId: id }, { categoryId: null });
+    await this.categoryRepository.delete(id);
+    return true;
+  }
+
+  private async assertCategoryNameAvailable(
+    name: string,
+    slug: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const existing = await this.categoryRepository.findOne({
+      where: [{ name }, { slug }],
+    });
+    if (existing && existing.id !== excludeId) {
+      throw new ConflictException('A category with this name already exists');
+    }
   }
 
   async findDecks(options: DeckQueryOptions): Promise<Deck[]> {

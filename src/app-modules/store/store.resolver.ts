@@ -1,14 +1,18 @@
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../../database/enums';
 import { User } from '../users/entities/user.entity';
 import { Flashcard } from '../study/entities/flashcard.entity';
 import { CategoryType } from './dto/category.type';
+import { CreateCategoryInput } from './dto/create-category.input';
 import { CreateDeckInput } from './dto/create-deck.input';
 import { CreateFlashcardInput } from './dto/create-flashcard.input';
 import { DecksArgs } from './dto/decks.args';
 import { DeckType } from './dto/deck.type';
 import { FlashcardType } from './dto/flashcard.type';
 import { ImportDeckInput } from './dto/import-deck.input';
+import { UpdateCategoryInput } from './dto/update-category.input';
 import { UpdateDeckInput } from './dto/update-deck.input';
 import { UpdateFlashcardInput } from './dto/update-flashcard.input';
 import { Category } from './entities/category.entity';
@@ -22,6 +26,27 @@ export class StoreResolver {
   @Query(() => [CategoryType])
   categories(): Promise<Category[]> {
     return this.storeService.findAllCategories();
+  }
+
+  @Mutation(() => CategoryType)
+  @Roles(UserRole.ADMIN)
+  createCategory(@Args('input') input: CreateCategoryInput): Promise<Category> {
+    return this.storeService.createCategory(input);
+  }
+
+  @Mutation(() => CategoryType)
+  @Roles(UserRole.ADMIN)
+  updateCategory(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('input') input: UpdateCategoryInput,
+  ): Promise<Category> {
+    return this.storeService.updateCategory(id, input);
+  }
+
+  @Mutation(() => Boolean)
+  @Roles(UserRole.ADMIN)
+  deleteCategory(@Args('id', { type: () => ID }) id: string): Promise<boolean> {
+    return this.storeService.deleteCategory(id);
   }
 
   @Query(() => [DeckType])
