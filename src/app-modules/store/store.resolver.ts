@@ -4,6 +4,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../../database/enums';
 import { User } from '../users/entities/user.entity';
 import { Flashcard } from '../study/entities/flashcard.entity';
+import { AdminCreateDeckInput } from './dto/admin-create-deck.input';
+import { AdminUpdateDeckInput } from './dto/admin-update-deck.input';
 import { CategoryType } from './dto/category.type';
 import { CreateCategoryInput } from './dto/create-category.input';
 import { CreateDeckInput } from './dto/create-deck.input';
@@ -131,5 +133,76 @@ export class StoreResolver {
     @CurrentUser() user: User,
   ): Promise<boolean> {
     return this.storeService.deleteFlashcard(user.id, id);
+  }
+
+  // ---- Admin deck management (Phase 3 checkpoint 3) ----
+
+  @Query(() => [DeckType])
+  @Roles(UserRole.ADMIN)
+  adminDecks(@Args() args: DecksArgs): Promise<Deck[]> {
+    // Same underlying query as the public `decks` browse — every public
+    // deck is exactly what admin deck management manages. A distinct
+    // resolver name/gate rather than reusing `decks` directly keeps the
+    // admin app's queries self-descriptive and independently cacheable.
+    return this.storeService.findDecks(args);
+  }
+
+  @Mutation(() => DeckType)
+  @Roles(UserRole.ADMIN)
+  adminCreateDeck(
+    @Args('input') input: AdminCreateDeckInput,
+    @CurrentUser() user: User,
+  ): Promise<Deck> {
+    return this.storeService.adminCreateDeck(user.id, input);
+  }
+
+  @Mutation(() => DeckType)
+  @Roles(UserRole.ADMIN)
+  adminUpdateDeck(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('input') input: AdminUpdateDeckInput,
+  ): Promise<Deck> {
+    return this.storeService.adminUpdateDeck(id, input);
+  }
+
+  @Mutation(() => Boolean)
+  @Roles(UserRole.ADMIN)
+  adminDeleteDeck(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    return this.storeService.adminDeleteDeck(id);
+  }
+
+  @Query(() => [FlashcardType])
+  @Roles(UserRole.ADMIN)
+  adminDeckFlashcards(
+    @Args('deckId', { type: () => ID }) deckId: string,
+  ): Promise<Flashcard[]> {
+    return this.storeService.adminDeckFlashcards(deckId);
+  }
+
+  @Mutation(() => FlashcardType)
+  @Roles(UserRole.ADMIN)
+  adminCreateFlashcard(
+    @Args('input') input: CreateFlashcardInput,
+  ): Promise<Flashcard> {
+    return this.storeService.adminCreateFlashcard(input);
+  }
+
+  @Mutation(() => FlashcardType)
+  @Roles(UserRole.ADMIN)
+  adminUpdateFlashcard(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('input') input: UpdateFlashcardInput,
+  ): Promise<Flashcard> {
+    return this.storeService.adminUpdateFlashcard(id, input);
+  }
+
+  @Mutation(() => Boolean)
+  @Roles(UserRole.ADMIN)
+  adminDeleteFlashcard(
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    return this.storeService.adminDeleteFlashcard(id);
   }
 }

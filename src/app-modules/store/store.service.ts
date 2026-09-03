@@ -10,6 +10,8 @@ import { Library } from '../library/entities/library.entity';
 import { Difficulty } from '../../database/enums';
 import { Category } from './entities/category.entity';
 import { Deck } from './entities/deck.entity';
+import { AdminCreateDeckInput } from './dto/admin-create-deck.input';
+import { AdminUpdateDeckInput } from './dto/admin-update-deck.input';
 import { CreateCategoryInput } from './dto/create-category.input';
 import { CreateDeckInput } from './dto/create-deck.input';
 import { CreateFlashcardInput } from './dto/create-flashcard.input';
@@ -279,6 +281,131 @@ export class StoreService {
     await this.deckRepository.softDelete(deckId);
     await this.libraryRepository.delete({ deckId });
     return true;
+  }
+
+  // ---- Admin deck management (Phase 3 checkpoint 3) ----
+  // Every deck created through adminCreateDeck is public (`isPublic: true`)
+  // — the counterpart to createDeck's always-private custom decks. Any
+  // admin can manage any public deck (not just the one they authored,
+  // unlike custom-deck ownership) — public decks are platform content, per
+  // the user's own call when this checkpoint's scope was reviewed. These
+  // mutations deliberately never touch a private deck — `findPublicDeckOrFail`
+  // is the boundary that keeps this out of user-content moderation, which
+  // was explicitly deferred.
+
+  async adminCreateDeck(
+    adminUserId: string,
+    input: AdminCreateDeckInput,
+  ): Promise<Deck> {
+    const saved = await this.deckRepository.save(
+      this.deckRepository.create({
+        title: input.title,
+        description: input.description ?? null,
+        coverUrl: input.coverUrl ?? null,
+        categoryId: input.categoryId,
+        difficulty: input.difficulty,
+        authorId: adminUserId,
+        isPublic: true,
+        isFree: true,
+        price: 0,
+      }),
+    );
+    const qb = this.deckQueryBuilder().where('deck.id = :id', {
+      id: saved.id,
+    });
+    const [deck] = await this.withComputedFields(qb);
+    return deck;
+  }
+
+  async adminUpdateDeck(
+    id: string,
+    input: AdminUpdateDeckInput,
+  ): Promise<Deck> {
+    await this.findPublicDeckOrFail(id);
+    await this.deckRepository.update(id, {
+      ...(input.title !== undefined && { title: input.title }),
+      ...(input.description !== undefined && {
+        description: input.description,
+      }),
+      ...(input.coverUrl !== undefined && { coverUrl: input.coverUrl }),
+      ...(input.categoryId !== undefined && { categoryId: input.categoryId }),
+      ...(input.difficulty !== undefined && { difficulty: input.difficulty }),
+    });
+    const qb = this.deckQueryBuilder().where('deck.id = :id', { id });
+    const [deck] = await this.withComputedFields(qb);
+    return deck;
+  }
+
+  async adminDeleteDeck(id: string): Promise<boolean> {
+    await this.findPublicDeckOrFail(id);
+    // Same dangling-library-row fix as deleteDeck, but here it matters for
+    // every user who ever added this deck to their library voluntarily
+    // (addDeckToLibrary), not just an auto-enrolled author — a public
+    // deck can be in many people's libraries.
+    await this.deckRepository.softDelete(id);
+    await this.libraryRepository.delete({ deckId: id });
+    return true;
+  }
+
+  async adminDeckFlashcards(deckId: string): Promise<Flashcard[]> {
+    await this.findPublicDeckOrFail(deckId);
+    return this.flashcardRepository.find({
+      where: { deckId },
+      order: { orderIndex: 'ASC' },
+    });
+  }
+
+  async adminCreateFlashcard(input: CreateFlashcardInput): Promise<Flashcard> {
+    await this.findPublicDeckOrFail(input.deckId);
+    const orderIndex =
+      input.orderIndex ?? (await this.nextFlashcardOrderIndex(input.deckId));
+    return this.flashcardRepository.save(
+      this.flashcardRepository.create({
+        deckId: input.deckId,
+        front: input.front,
+        back: input.back,
+        orderIndex,
+      }),
+    );
+  }
+
+  async adminUpdateFlashcard(
+    flashcardId: string,
+    input: UpdateFlashcardInput,
+  ): Promise<Flashcard> {
+    const flashcard = await this.findPublicFlashcardOrFail(flashcardId);
+    if (input.front !== undefined) flashcard.front = input.front;
+    if (input.back !== undefined) flashcard.back = input.back;
+    if (input.orderIndex !== undefined) flashcard.orderIndex = input.orderIndex;
+    return this.flashcardRepository.save(flashcard);
+  }
+
+  async adminDeleteFlashcard(flashcardId: string): Promise<boolean> {
+    const flashcard = await this.findPublicFlashcardOrFail(flashcardId);
+    await this.flashcardRepository.softDelete(flashcard.id);
+    return true;
+  }
+
+  /** Unlike findOwnedDeckOrFail, this never leaks anything by 404ing a private deck instead of a missing one — every caller is already @Roles(ADMIN)-gated, so there's no untrusted-caller ambiguity to hide here; it's purely "is this actually platform content." */
+  private async findPublicDeckOrFail(id: string): Promise<Deck> {
+    const deck = await this.deckRepository.findOneBy({ id, isPublic: true });
+    if (!deck) {
+      throw new NotFoundException('Deck not found');
+    }
+    return deck;
+  }
+
+  private async findPublicFlashcardOrFail(
+    flashcardId: string,
+  ): Promise<Flashcard> {
+    const flashcard = await this.flashcardRepository.findOne({
+      where: { id: flashcardId },
+      relations: { deck: true },
+    });
+    if (!flashcard || !flashcard.deck.isPublic) {
+      throw new NotFoundException('Flashcard not found');
+    }
+    return flashcard;
   }
 
   async findDeckFlashcards(
