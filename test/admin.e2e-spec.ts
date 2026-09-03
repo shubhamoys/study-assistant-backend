@@ -491,6 +491,73 @@ describe('Admin (e2e)', () => {
     });
   });
 
+  describe('admin deck pricing (isFree / price)', () => {
+    it('defaults to free when isFree is omitted entirely', async () => {
+      const res: GraphQLResponse<{
+        adminCreateDeck: { id: string; isFree: boolean; price: number };
+      }> = await authedAs(
+        adminToken,
+        `mutation { adminCreateDeck(input: { title: "E2E Default Free Deck", categoryId: "${existingCategoryId}", difficulty: BEGINNER }) { id isFree price } }`,
+      );
+      expect(res.body.data!.adminCreateDeck.isFree).toBe(true);
+      expect(res.body.data!.adminCreateDeck.price).toBe(0);
+    });
+
+    it('rejects creating a paid deck with no price', async () => {
+      const res: GraphQLResponse<null> = await authedAs(
+        adminToken,
+        `mutation { adminCreateDeck(input: { title: "E2E No Price Deck", categoryId: "${existingCategoryId}", difficulty: BEGINNER, isFree: false }) { id } }`,
+      );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
+    });
+
+    it('creates a paid deck, converting whole-rupee input to paise', async () => {
+      const res: GraphQLResponse<{
+        adminCreateDeck: { id: string; isFree: boolean; price: number };
+      }> = await authedAs(
+        adminToken,
+        `mutation { adminCreateDeck(input: { title: "E2E Paid Deck", categoryId: "${existingCategoryId}", difficulty: BEGINNER, isFree: false, priceRupees: 499 }) { id isFree price } }`,
+      );
+      expect(res.body.data!.adminCreateDeck.isFree).toBe(false);
+      expect(res.body.data!.adminCreateDeck.price).toBe(49900);
+      const paidDeckId = res.body.data!.adminCreateDeck.id;
+
+      // A paid deck can never be acquired through the free one-click path.
+      const libraryRes: GraphQLResponse<null> = await authedAs(
+        userToken,
+        `mutation { addDeckToLibrary(deckId: "${paidDeckId}") { id } }`,
+      );
+      expect(libraryRes.body.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    });
+
+    it('flips a deck from free to paid on update, and back to free', async () => {
+      const createRes: GraphQLResponse<{ adminCreateDeck: { id: string } }> =
+        await authedAs(
+          adminToken,
+          `mutation { adminCreateDeck(input: { title: "E2E Flip Deck", categoryId: "${existingCategoryId}", difficulty: BEGINNER }) { id } }`,
+        );
+      const flipDeckId = createRes.body.data!.adminCreateDeck.id;
+
+      const toPaidRes: GraphQLResponse<{
+        adminUpdateDeck: { isFree: boolean; price: number };
+      }> = await authedAs(
+        adminToken,
+        `mutation { adminUpdateDeck(id: "${flipDeckId}", input: { isFree: false, priceRupees: 199 }) { isFree price } }`,
+      );
+      expect(toPaidRes.body.data!.adminUpdateDeck.isFree).toBe(false);
+      expect(toPaidRes.body.data!.adminUpdateDeck.price).toBe(19900);
+
+      const toFreeRes: GraphQLResponse<{
+        adminUpdateDeck: { isFree: boolean; price: number };
+      }> = await authedAs(
+        adminToken,
+        `mutation { adminUpdateDeck(id: "${flipDeckId}", input: { isFree: true }) { isFree price } }`,
+      );
+      expect(toFreeRes.body.data!.adminUpdateDeck.isFree).toBe(true);
+      expect(toFreeRes.body.data!.adminUpdateDeck.price).toBe(0);
+    });
+  });
+
   describe('adminDeckFlashcards / adminCreateFlashcard / adminUpdateFlashcard / adminDeleteFlashcard', () => {
     let deckId: string;
     let flashcardId: string;

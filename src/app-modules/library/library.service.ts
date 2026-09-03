@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -55,6 +56,15 @@ export class LibraryService {
     });
     if (!deck) {
       throw new NotFoundException('Deck not found');
+    }
+    // A custom/private deck is always free (never exposed a way to set
+    // isFree:false), so this only ever fires for a paid admin-created Store
+    // deck — those are only ever acquired through cart → checkout (Phase 4
+    // checkpoint 1/2), never this direct one-click path.
+    if (!deck.isFree) {
+      throw new ForbiddenException(
+        'This deck must be purchased — add it to your cart instead.',
+      );
     }
 
     const existing = await this.libraryRepository.findOneBy({

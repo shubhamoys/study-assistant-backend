@@ -1,13 +1,17 @@
-import { Field, ID, InputType } from '@nestjs/graphql';
+import { Field, ID, Int, InputType } from '@nestjs/graphql';
 import {
+  IsBoolean,
   IsEnum,
+  IsInt,
   IsOptional,
   IsUUID,
+  Min,
   MaxLength,
   MinLength,
 } from 'class-validator';
 import { Difficulty } from '../../../database/enums';
 
+/** See AdminCreateDeckInput's doc comment for the `priceRupees` conversion rule. */
 @InputType()
 export class AdminUpdateDeckInput {
   @Field(() => String, { nullable: true })
@@ -35,4 +39,15 @@ export class AdminUpdateDeckInput {
   @IsOptional()
   @IsEnum(Difficulty)
   difficulty?: Difficulty;
+
+  @Field(() => Boolean, { nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  isFree?: boolean;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1, { message: 'Price must be at least ₹1' })
+  priceRupees?: number;
 }

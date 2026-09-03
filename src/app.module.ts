@@ -21,6 +21,7 @@ import { StudyModule } from './app-modules/study/study.module';
 import { ReviewsModule } from './app-modules/reviews/reviews.module';
 import { AttachmentsModule } from './app-modules/attachments/attachments.module';
 import { AdminModule } from './app-modules/admin/admin.module';
+import { CartModule } from './app-modules/cart/cart.module';
 
 @Module({
   imports: [
@@ -100,6 +101,7 @@ import { AdminModule } from './app-modules/admin/admin.module';
     ReviewsModule,
     AttachmentsModule,
     AdminModule,
+    CartModule,
   ],
   providers: [
     {

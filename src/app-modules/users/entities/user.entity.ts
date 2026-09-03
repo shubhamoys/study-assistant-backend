@@ -14,6 +14,7 @@ import { Review } from '../../reviews/entities/review.entity';
 import { RefreshToken } from '../../auth/entities/refresh-token.entity';
 import { Deck } from '../../store/entities/deck.entity';
 import { Library } from '../../library/entities/library.entity';
+import { CartItem } from '../../cart/entities/cart-item.entity';
 import { CardProgress } from '../../study/entities/card-progress.entity';
 import { ReviewHistory } from '../../study/entities/review-history.entity';
 import { StudySession } from '../../study/entities/study-session.entity';
@@ -89,4 +90,7 @@ export class User {
 
   @OneToMany(() => Attachment, (attachment) => attachment.user)
   attachments!: Attachment[];
+
+  @OneToMany(() => CartItem, (cartItem) => cartItem.user)
+  cartItems!: CartItem[];
 }

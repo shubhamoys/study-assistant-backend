@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -293,10 +294,33 @@ export class StoreService {
   // is the boundary that keeps this out of user-content moderation, which
   // was explicitly deferred.
 
+  /**
+   * `priceRupees` is only required (and only meaningful) when `isFree` is
+   * `false` — converts to `Deck.price` (paise) here so no caller ever writes
+   * a raw rupee amount into that column. Shared by create and update so the
+   * validation rule can't drift between the two.
+   */
+  private resolveDeckPricing(
+    isFree: boolean,
+    priceRupees?: number,
+  ): { isFree: boolean; price: number } {
+    if (isFree) return { isFree: true, price: 0 };
+    if (!priceRupees) {
+      throw new BadRequestException(
+        'Price is required for a paid deck (in whole rupees).',
+      );
+    }
+    return { isFree: false, price: priceRupees * 100 };
+  }
+
   async adminCreateDeck(
     adminUserId: string,
     input: AdminCreateDeckInput,
   ): Promise<Deck> {
+    const pricing = this.resolveDeckPricing(
+      input.isFree ?? true,
+      input.priceRupees,
+    );
     const saved = await this.deckRepository.save(
       this.deckRepository.create({
         title: input.title,
@@ -306,8 +330,8 @@ export class StoreService {
         difficulty: input.difficulty,
         authorId: adminUserId,
         isPublic: true,
-        isFree: true,
-        price: 0,
+        isFree: pricing.isFree,
+        price: pricing.price,
       }),
     );
     const qb = this.deckQueryBuilder().where('deck.id = :id', {
@@ -322,6 +346,10 @@ export class StoreService {
     input: AdminUpdateDeckInput,
   ): Promise<Deck> {
     await this.findPublicDeckOrFail(id);
+    const pricing =
+      input.isFree !== undefined
+        ? this.resolveDeckPricing(input.isFree, input.priceRupees)
+        : undefined;
     await this.deckRepository.update(id, {
       ...(input.title !== undefined && { title: input.title }),
       ...(input.description !== undefined && {
@@ -330,6 +358,10 @@ export class StoreService {
       ...(input.coverUrl !== undefined && { coverUrl: input.coverUrl }),
       ...(input.categoryId !== undefined && { categoryId: input.categoryId }),
       ...(input.difficulty !== undefined && { difficulty: input.difficulty }),
+      ...(pricing !== undefined && {
+        isFree: pricing.isFree,
+        price: pricing.price,
+      }),
     });
     const qb = this.deckQueryBuilder().where('deck.id = :id', { id });
     const [deck] = await this.withComputedFields(qb);

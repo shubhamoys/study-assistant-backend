@@ -18,6 +18,7 @@ import { StudySession } from '../../study/entities/study-session.entity';
 import { Category } from './category.entity';
 import { Library } from '../../library/entities/library.entity';
 import { User } from '../../users/entities/user.entity';
+import { CartItem } from '../../cart/entities/cart-item.entity';
 
 @Entity('decks')
 @Index(['isPublic', 'isFree'])
@@ -95,6 +96,9 @@ export class Deck {
 
   @OneToMany(() => Library, (library) => library.deck)
   libraryEntries!: Library[];
+
+  @OneToMany(() => CartItem, (cartItem) => cartItem.deck)
+  cartItems!: CartItem[];
 
   @OneToMany(() => Review, (review) => review.deck)
   reviews!: Review[];
