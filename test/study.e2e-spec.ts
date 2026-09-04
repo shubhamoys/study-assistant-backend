@@ -57,12 +57,16 @@ describe('Study (e2e)', () => {
         );
     token = registerRes.body.data!.register.accessToken;
 
-    const decks = await deckRepository.find({
-      where: { isPublic: true },
-      take: 2,
-    });
-    libraryDeckId = decks[0].id;
-    otherDeckId = decks[1].id;
+    // Pinned to specific seeded decks by title, not "any public deck" (see
+    // reviews.e2e-spec.ts's matching comment for the full reasoning) — and
+    // isFree: true is still required regardless, since libraryDeckId goes
+    // through the direct addDeckToLibrary path, which a paid deck rejects.
+    const [libraryDeck, otherDeck] = await Promise.all([
+      deckRepository.findOneByOrFail({ title: 'JavaScript Fundamentals' }),
+      deckRepository.findOneByOrFail({ title: 'Anatomy 101' }),
+    ]);
+    libraryDeckId = libraryDeck.id;
+    otherDeckId = otherDeck.id;
 
     await authed(
       `mutation { addDeckToLibrary(deckId: "${libraryDeckId}") { id } }`,

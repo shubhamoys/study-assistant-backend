@@ -198,6 +198,14 @@ describe('Orders (e2e)', () => {
         `{ deck(id: "${deckAId}") { downloadsCount } }`,
       );
     expect(deckRes.body.data!.deck.downloadsCount).toBe(1);
+
+    // A purchase is permanent — can't be removed from the library, even by
+    // its own owner, to prevent an accidental-removal data loss.
+    const removeRes: GraphQLResponse<null> = await authedAs(
+      userToken,
+      `mutation { removeDeckFromLibrary(deckId: "${deckAId}") }`,
+    );
+    expect(removeRes.body.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
   });
 
   it('drops a cart item whose deck went free before checkout, rather than failing the whole order', async () => {

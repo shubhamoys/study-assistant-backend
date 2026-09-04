@@ -91,10 +91,22 @@ export class LibraryService {
   }
 
   async removeDeck(userId: string, deckId: string): Promise<boolean> {
-    const result = await this.libraryRepository.delete({ userId, deckId });
-    if (!result.affected) {
+    const entry = await this.libraryRepository.findOne({
+      where: { userId, deckId },
+      relations: { deck: true },
+    });
+    if (!entry) {
       throw new NotFoundException('Deck not found in your library');
     }
+    // A purchase is permanent — removing it here would be an easy way to
+    // accidentally lose access to a deck you paid for, with no undo. Free
+    // decks can still be removed and re-added at will.
+    if (!entry.deck.isFree) {
+      throw new ForbiddenException(
+        "Purchased decks can't be removed from your library",
+      );
+    }
+    await this.libraryRepository.delete({ userId, deckId });
     return true;
   }
 

@@ -67,8 +67,13 @@ describe('Reviews (e2e)', () => {
         );
     tokenB = registerB.body.data!.register.accessToken;
 
+    // Pinned to a specific seeded deck by title, not "any public deck" —
+    // seeded decks are the only ones guaranteed to exist for the whole
+    // suite's lifetime and never be concurrently mutated/deleted by another
+    // spec file's own test-created (and test-deleted) decks running in a
+    // parallel Jest worker against the same shared dev database.
     const deck = await deckRepository.findOneOrFail({
-      where: { isPublic: true },
+      where: { title: 'JavaScript Fundamentals' },
     });
     deckId = deck.id;
 

@@ -52,13 +52,12 @@ describe('Store & Library (e2e)', () => {
       );
     token = registerRes.body.data!.register.accessToken;
 
-    // isFree: true too, not just isPublic — this suite exercises the direct
-    // addDeckToLibrary path, which a paid deck (Phase 4 checkpoint 1)
-    // rejects. Without this filter, a paid deck created by a concurrently
-    // running suite (e.g. cart/orders/admin pricing tests) could get picked
-    // instead of one of the free seeded decks, non-deterministically.
+    // Pinned to a specific seeded deck by title, not "any public deck" (see
+    // reviews.e2e-spec.ts's matching comment for the full reasoning) — this
+    // suite also exercises the direct addDeckToLibrary path, which a paid
+    // deck (Phase 4 checkpoint 1) rejects, so it has to be a free one too.
     const seededDeck = await deckRepository.findOneOrFail({
-      where: { isPublic: true, isFree: true },
+      where: { title: 'JavaScript Fundamentals' },
     });
     seededDeckId = seededDeck.id;
   });
