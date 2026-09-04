@@ -22,6 +22,7 @@ import { ReviewsModule } from './app-modules/reviews/reviews.module';
 import { AttachmentsModule } from './app-modules/attachments/attachments.module';
 import { AdminModule } from './app-modules/admin/admin.module';
 import { CartModule } from './app-modules/cart/cart.module';
+import { OrdersModule } from './app-modules/orders/orders.module';
 
 @Module({
   imports: [
@@ -102,6 +103,7 @@ import { CartModule } from './app-modules/cart/cart.module';
     AttachmentsModule,
     AdminModule,
     CartModule,
+    OrdersModule,
   ],
   providers: [
     {

@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
+import { Repository, type QueryDeepPartialEntity } from 'typeorm';
 import { UserRole } from '../../database/enums';
 import { User } from './entities/user.entity';
 
@@ -60,7 +60,17 @@ export class UsersService {
     return user;
   }
 
-  async update(id: string, partial: Partial<User>): Promise<User> {
+  // `QueryDeepPartialEntity<User>`, not `Partial<User>` — TypeORM's own
+  // update() parameter type, matched exactly. Comparing a plain
+  // `Partial<User>` against it (as this used to do) makes TS structurally
+  // recurse through every relation on User to check assignability, and
+  // adding Order (Phase 4 checkpoint 2) tipped that recursion over
+  // TS's comparison-depth limit — spurious errors several relations deep,
+  // unrelated to anything this method actually does with scalar columns.
+  async update(
+    id: string,
+    partial: QueryDeepPartialEntity<User>,
+  ): Promise<User> {
     await this.usersRepository.update(id, partial);
     return (await this.findById(id))!;
   }

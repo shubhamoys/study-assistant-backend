@@ -29,3 +29,23 @@ export enum FSRSState {
   REVIEW = 'REVIEW',
   RELEARNING = 'RELEARNING',
 }
+
+export enum OrderStatus {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum PaymentGateway {
+  RAZORPAY = 'RAZORPAY',
+  CASHFREE = 'CASHFREE',
+  /** The Phase 4 checkpoint 2 stub — checkout completes instantly, no real gateway involved yet. See DEVELOPMENT_ROADMAP.md's Phase 4 "Deferred" note. */
+  MANUAL = 'MANUAL',
+}
+
+export enum PaymentStatus {
+  PENDING = 'PENDING',
+  SUCCESS = 'SUCCESS',
+  FAILED = 'FAILED',
+}
