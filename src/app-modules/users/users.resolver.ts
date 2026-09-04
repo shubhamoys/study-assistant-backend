@@ -26,7 +26,7 @@ export class UsersResolver {
   }
 
   @Query(() => AdminUserPage)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   async adminUsers(@Args() args: AdminUsersArgs): Promise<AdminUserPage> {
     const page = args.page ?? 1;
     const limit = args.limit ?? 20;
@@ -45,7 +45,7 @@ export class UsersResolver {
   }
 
   @Query(() => UserType)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   async adminUser(@Args('id', { type: () => ID }) id: string): Promise<User> {
     const user = await this.usersService.findById(id);
     if (!user) {
@@ -54,8 +54,11 @@ export class UsersResolver {
     return user;
   }
 
+  // Only a super admin can promote/demote another account — see the
+  // SUPER_ADMIN doc comment on the enum for why this is narrower than the
+  // rest of this resolver's @Roles(ADMIN, SUPER_ADMIN) queries.
   @Mutation(() => UserType)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   adminUpdateUserRole(
     @Args('id', { type: () => ID }) id: string,
     @Args('role', { type: () => UserRole }) role: UserRole,
@@ -64,8 +67,9 @@ export class UsersResolver {
     return this.usersService.updateRole(currentUser.id, id, role);
   }
 
+  // Same super-admin-only restriction as adminUpdateUserRole above.
   @Mutation(() => UserType)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   adminCreateAdminUser(
     @Args('input') input: CreateAdminUserInput,
   ): Promise<User> {

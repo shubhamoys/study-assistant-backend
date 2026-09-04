@@ -18,6 +18,7 @@ interface GraphQLResponse<T> {
 }
 
 const TEST_EMAIL_ADMIN = 'e2e-admin-test-admin@example.com';
+const TEST_EMAIL_SUPER_ADMIN = 'e2e-admin-test-super-admin@example.com';
 const TEST_EMAIL_USER = 'e2e-admin-test-user@example.com';
 const TEST_PASSWORD = 'password123';
 
@@ -34,8 +35,10 @@ describe('Admin (e2e)', () => {
   let categoryRepository: Repository<Category>;
   let deckRepository: Repository<Deck>;
   let adminToken: string;
+  let superAdminToken: string;
   let userToken: string;
   let adminId: string;
+  let superAdminId: string;
   let userId: string;
   let existingCategoryId: string;
 
@@ -51,6 +54,7 @@ describe('Admin (e2e)', () => {
     categoryRepository = moduleFixture.get(getRepositoryToken(Category));
     deckRepository = moduleFixture.get(getRepositoryToken(Deck));
     await userRepository.delete({ email: TEST_EMAIL_ADMIN });
+    await userRepository.delete({ email: TEST_EMAIL_SUPER_ADMIN });
     await userRepository.delete({ email: TEST_EMAIL_USER });
     await userRepository.delete({ email: TEST_EMAIL_NEW_ADMIN });
     await categoryRepository.delete({ name: TEST_CATEGORY_NAME });
@@ -79,6 +83,26 @@ describe('Admin (e2e)', () => {
       })
     ).id;
 
+    const registerSuperAdmin: GraphQLResponse<{
+      register: { accessToken: string };
+    }> = await request(app.getHttpServer())
+      .post('/graphql')
+      .send(
+        gql(
+          `mutation { register(input: { email: "${TEST_EMAIL_SUPER_ADMIN}", password: "${TEST_PASSWORD}", displayName: "Super Admin E2E" }) { accessToken } }`,
+        ),
+      );
+    superAdminToken = registerSuperAdmin.body.data!.register.accessToken;
+    await userRepository.update(
+      { email: TEST_EMAIL_SUPER_ADMIN },
+      { role: UserRole.SUPER_ADMIN },
+    );
+    superAdminId = (
+      await userRepository.findOneByOrFail({
+        email: TEST_EMAIL_SUPER_ADMIN,
+      })
+    ).id;
+
     const registerUser: GraphQLResponse<{
       register: { accessToken: string };
     }> = await request(app.getHttpServer())
@@ -100,6 +124,7 @@ describe('Admin (e2e)', () => {
     await deckRepository.delete({ authorId: adminId });
     await categoryRepository.delete({ name: TEST_CATEGORY_NAME });
     await userRepository.delete({ email: TEST_EMAIL_ADMIN });
+    await userRepository.delete({ email: TEST_EMAIL_SUPER_ADMIN });
     await userRepository.delete({ email: TEST_EMAIL_NEW_ADMIN });
     await userRepository.delete({ email: TEST_EMAIL_USER });
     await app.close();
@@ -219,10 +244,18 @@ describe('Admin (e2e)', () => {
       expect(res.body.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
     });
 
+    it('rejects a plain admin with FORBIDDEN — only a super admin can change roles', async () => {
+      const res: GraphQLResponse<null> = await authedAs(
+        adminToken,
+        `mutation { adminUpdateUserRole(id: "${userId}", role: ADMIN) { id } }`,
+      );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    });
+
     it('promotes a user to ADMIN', async () => {
       const res: GraphQLResponse<{ adminUpdateUserRole: { role: string } }> =
         await authedAs(
-          adminToken,
+          superAdminToken,
           `mutation { adminUpdateUserRole(id: "${userId}", role: ADMIN) { id role } }`,
         );
       expect(res.body.data!.adminUpdateUserRole.role).toBe('ADMIN');
@@ -231,23 +264,31 @@ describe('Admin (e2e)', () => {
     it('demotes back to USER', async () => {
       const res: GraphQLResponse<{ adminUpdateUserRole: { role: string } }> =
         await authedAs(
-          adminToken,
+          superAdminToken,
           `mutation { adminUpdateUserRole(id: "${userId}", role: USER) { id role } }`,
         );
       expect(res.body.data!.adminUpdateUserRole.role).toBe('USER');
     });
 
-    it('blocks an admin from demoting themselves', async () => {
+    it('rejects setting role to SUPER_ADMIN — only the seeder grants it', async () => {
       const res: GraphQLResponse<null> = await authedAs(
-        adminToken,
-        `mutation { adminUpdateUserRole(id: "${adminId}", role: USER) { id } }`,
+        superAdminToken,
+        `mutation { adminUpdateUserRole(id: "${userId}", role: SUPER_ADMIN) { id } }`,
+      );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
+    });
+
+    it("rejects changing a super admin's own role", async () => {
+      const res: GraphQLResponse<null> = await authedAs(
+        superAdminToken,
+        `mutation { adminUpdateUserRole(id: "${superAdminId}", role: ADMIN) { id } }`,
       );
       expect(res.body.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
     });
 
     it('404s for a missing user id', async () => {
       const res: GraphQLResponse<null> = await authedAs(
-        adminToken,
+        superAdminToken,
         `mutation { adminUpdateUserRole(id: "00000000-0000-0000-0000-000000000000", role: ADMIN) { id } }`,
       );
       expect(res.body.errors?.[0]?.extensions?.code).toBe('NOT_FOUND');
@@ -263,6 +304,14 @@ describe('Admin (e2e)', () => {
       expect(res.body.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
     });
 
+    it('rejects a plain admin with FORBIDDEN — only a super admin can create admins', async () => {
+      const res: GraphQLResponse<null> = await authedAs(
+        adminToken,
+        `mutation { adminCreateAdminUser(input: { email: "${TEST_EMAIL_NEW_ADMIN}", password: "${TEST_PASSWORD}", displayName: "New Admin" }) { id } }`,
+      );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    });
+
     it('creates a new admin account, verified and role ADMIN', async () => {
       const res: GraphQLResponse<{
         adminCreateAdminUser: {
@@ -271,7 +320,7 @@ describe('Admin (e2e)', () => {
           isEmailVerified: boolean;
         };
       }> = await authedAs(
-        adminToken,
+        superAdminToken,
         `mutation { adminCreateAdminUser(input: { email: "${TEST_EMAIL_NEW_ADMIN}", password: "${TEST_PASSWORD}", displayName: "New Admin" }) { id role isEmailVerified } }`,
       );
       expect(res.body.data!.adminCreateAdminUser.role).toBe('ADMIN');
@@ -280,7 +329,7 @@ describe('Admin (e2e)', () => {
 
     it('rejects a duplicate email', async () => {
       const res: GraphQLResponse<null> = await authedAs(
-        adminToken,
+        superAdminToken,
         `mutation { adminCreateAdminUser(input: { email: "${TEST_EMAIL_NEW_ADMIN}", password: "${TEST_PASSWORD}", displayName: "Dup" }) { id } }`,
       );
       expect(res.body.errors?.[0]?.extensions?.code).toBe('CONFLICT');

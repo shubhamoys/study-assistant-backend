@@ -10,13 +10,13 @@ export class AdminResolver {
   constructor(private readonly adminService: AdminService) {}
 
   @Query(() => AdminDashboardStats)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   adminDashboardStats(): Promise<AdminDashboardStats> {
     return this.adminService.getDashboardStats();
   }
 
   @Query(() => AdminAnalytics)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   adminAnalytics(): Promise<AdminAnalytics> {
     return this.adminService.getAnalytics();
   }

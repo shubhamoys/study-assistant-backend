@@ -36,7 +36,10 @@ async function main() {
     {
       email: adminEmail,
       passwordHash,
-      role: UserRole.ADMIN,
+      // The seeded account is the one true super admin — see UserRole's
+      // doc comment. No mutation ever grants this role; it only ever comes
+      // from rerunning this seeder.
+      role: UserRole.SUPER_ADMIN,
       isEmailVerified: true,
       displayName: 'Study Assistant',
     },

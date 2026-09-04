@@ -31,13 +31,13 @@ export class StoreResolver {
   }
 
   @Mutation(() => CategoryType)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   createCategory(@Args('input') input: CreateCategoryInput): Promise<Category> {
     return this.storeService.createCategory(input);
   }
 
   @Mutation(() => CategoryType)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   updateCategory(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: UpdateCategoryInput,
@@ -46,7 +46,7 @@ export class StoreResolver {
   }
 
   @Mutation(() => Boolean)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   deleteCategory(@Args('id', { type: () => ID }) id: string): Promise<boolean> {
     return this.storeService.deleteCategory(id);
   }
@@ -138,7 +138,7 @@ export class StoreResolver {
   // ---- Admin deck management (Phase 3 checkpoint 3) ----
 
   @Query(() => [DeckType])
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   adminDecks(@Args() args: DecksArgs): Promise<Deck[]> {
     // Same underlying query as the public `decks` browse — every public
     // deck is exactly what admin deck management manages. A distinct
@@ -148,7 +148,7 @@ export class StoreResolver {
   }
 
   @Mutation(() => DeckType)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   adminCreateDeck(
     @Args('input') input: AdminCreateDeckInput,
     @CurrentUser() user: User,
@@ -157,7 +157,7 @@ export class StoreResolver {
   }
 
   @Mutation(() => DeckType)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   adminUpdateDeck(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: AdminUpdateDeckInput,
@@ -166,7 +166,7 @@ export class StoreResolver {
   }
 
   @Mutation(() => Boolean)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   adminDeleteDeck(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<boolean> {
@@ -174,7 +174,7 @@ export class StoreResolver {
   }
 
   @Query(() => [FlashcardType])
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   adminDeckFlashcards(
     @Args('deckId', { type: () => ID }) deckId: string,
   ): Promise<Flashcard[]> {
@@ -182,7 +182,7 @@ export class StoreResolver {
   }
 
   @Mutation(() => FlashcardType)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   adminCreateFlashcard(
     @Args('input') input: CreateFlashcardInput,
   ): Promise<Flashcard> {
@@ -190,7 +190,7 @@ export class StoreResolver {
   }
 
   @Mutation(() => FlashcardType)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   adminUpdateFlashcard(
     @Args('id', { type: () => ID }) id: string,
     @Args('input') input: UpdateFlashcardInput,
@@ -199,7 +199,7 @@ export class StoreResolver {
   }
 
   @Mutation(() => Boolean)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   adminDeleteFlashcard(
     @Args('id', { type: () => ID }) id: string,
   ): Promise<boolean> {

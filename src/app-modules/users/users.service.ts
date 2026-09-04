@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -86,21 +87,33 @@ export class UsersService {
   }
 
   /**
-   * `currentUserId` is always the caller — blocks an admin from demoting
-   * themselves, which would otherwise be a self-service lockout with no
-   * recovery path short of a direct DB edit.
+   * `currentUserId` is always the caller — blocks a super admin from
+   * demoting themselves, which would otherwise be a self-service lockout
+   * (nobody left who can manage admins short of rerunning the seeder).
+   * `role` is only ever USER or ADMIN here — SUPER_ADMIN is exclusively
+   * seeder-assigned (see the enum's doc comment), never grantable through
+   * this or any other mutation, and a SUPER_ADMIN target's own role can't
+   * be changed through this path at all.
    */
   async updateRole(
     currentUserId: string,
     targetId: string,
     role: UserRole,
   ): Promise<User> {
+    if (role === UserRole.SUPER_ADMIN) {
+      throw new BadRequestException(
+        'Super admin can only be assigned by rerunning the seeder',
+      );
+    }
     if (currentUserId === targetId && role !== UserRole.ADMIN) {
       throw new ForbiddenException('You cannot remove your own admin access');
     }
     const target = await this.findById(targetId);
     if (!target) {
       throw new NotFoundException('User not found');
+    }
+    if (target.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException("A super admin's role can't be changed");
     }
     return this.update(targetId, { role });
   }
