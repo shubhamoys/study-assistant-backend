@@ -7,6 +7,7 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import {
+  CouponDiscountType,
   OrderStatus,
   PaymentGateway,
   PaymentStatus,
@@ -15,6 +16,8 @@ import { CartItem } from '../cart/entities/cart-item.entity';
 import { Library } from '../library/entities/library.entity';
 import { Deck } from '../store/entities/deck.entity';
 import { Flashcard } from '../study/entities/flashcard.entity';
+import { CouponPreviewType } from './dto/coupon-preview.type';
+import { Coupon } from './entities/coupon.entity';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { Payment } from './entities/payment.entity';
@@ -30,6 +33,10 @@ export class OrdersService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(Flashcard)
     private readonly flashcardRepository: Repository<Flashcard>,
+    @InjectRepository(CartItem)
+    private readonly cartItemRepository: Repository<CartItem>,
+    @InjectRepository(Coupon)
+    private readonly couponRepository: Repository<Coupon>,
   ) {}
 
   /**
@@ -40,7 +47,7 @@ export class OrdersService {
    * doc comment for why this is the deliberate stub the whole checkpoint
    * is scoped around.
    */
-  async checkout(userId: string): Promise<Order> {
+  async checkout(userId: string, couponCode?: string): Promise<Order> {
     const orderId = await this.dataSource.transaction(async (manager) => {
       const cartItems = await manager.find(CartItem, {
         where: { userId },
@@ -59,15 +66,32 @@ export class OrdersService {
         );
       }
 
-      const totalAmount = purchasable.reduce(
+      const subtotalAmount = purchasable.reduce(
         (sum, item) => sum + item.deck.price,
         0,
       );
 
+      let coupon: Coupon | null = null;
+      let discountAmount = 0;
+      if (couponCode) {
+        const found = await manager.findOneBy(Coupon, {
+          code: normalizeCouponCode(couponCode),
+        });
+        ({ coupon, discountAmount } = validateAndComputeDiscount(
+          found,
+          subtotalAmount,
+        ));
+      }
+      const totalAmount = subtotalAmount - discountAmount;
+
       const order = await manager.save(
         manager.create(Order, {
           userId,
+          subtotalAmount,
+          discountAmount,
           totalAmount,
+          couponId: coupon?.id ?? null,
+          couponCode: coupon?.code ?? null,
           currency: 'INR',
           status: OrderStatus.COMPLETED,
         }),
@@ -92,6 +116,15 @@ export class OrdersService {
           status: PaymentStatus.SUCCESS,
         }),
       );
+
+      if (coupon) {
+        await manager.increment(
+          Coupon,
+          { id: coupon.id },
+          'redemptionsCount',
+          1,
+        );
+      }
 
       // Grant access the same way a free deck does — skip a deck the buyer
       // somehow already owns (shouldn't happen given the cart's own
@@ -126,6 +159,48 @@ export class OrdersService {
     });
 
     return this.findOne(userId, orderId);
+  }
+
+  /**
+   * Read-only — validates a coupon against the user's *current* cart total
+   * without touching redemptionsCount or persisting anything, so the
+   * /checkout page can show a discount breakdown before the user commits to
+   * paying. `checkout` re-validates independently inside its own
+   * transaction; this is purely a preview.
+   */
+  async previewCoupon(
+    userId: string,
+    couponCode: string,
+  ): Promise<CouponPreviewType> {
+    const cartItems = await this.cartItemRepository.find({
+      where: { userId },
+      relations: { deck: true },
+    });
+    const purchasable = cartItems.filter(
+      (item) => item.deck.isPublic && !item.deck.isFree,
+    );
+    if (purchasable.length === 0) {
+      throw new BadRequestException('Your cart has nothing to check out');
+    }
+    const subtotalAmount = purchasable.reduce(
+      (sum, item) => sum + item.deck.price,
+      0,
+    );
+
+    const found = await this.couponRepository.findOneBy({
+      code: normalizeCouponCode(couponCode),
+    });
+    const { coupon, discountAmount } = validateAndComputeDiscount(
+      found,
+      subtotalAmount,
+    );
+
+    return {
+      code: coupon.code,
+      subtotalAmount,
+      discountAmount,
+      totalAmount: subtotalAmount - discountAmount,
+    };
   }
 
   findForUser(userId: string): Promise<Order[]> {
@@ -194,4 +269,47 @@ export class OrdersService {
     });
     return orders;
   }
+}
+
+function normalizeCouponCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+/**
+ * Shared by `checkout` (transactional lookup via EntityManager) and
+ * `previewCoupon` (plain repository lookup) — both fetch the `Coupon` row
+ * differently, but the validation/math is identical, so it lives here once
+ * rather than in the class where it'd have to be duplicated per lookup path.
+ */
+function validateAndComputeDiscount(
+  coupon: Coupon | null,
+  subtotalAmount: number,
+): { coupon: Coupon; discountAmount: number } {
+  if (!coupon || !coupon.isActive) {
+    throw new NotFoundException('Invalid coupon code');
+  }
+  if (coupon.expiresAt && coupon.expiresAt.getTime() < Date.now()) {
+    throw new BadRequestException('This coupon has expired');
+  }
+  if (
+    coupon.maxRedemptions !== null &&
+    coupon.redemptionsCount >= coupon.maxRedemptions
+  ) {
+    throw new BadRequestException('This coupon has reached its usage limit');
+  }
+  if (
+    coupon.minOrderAmount !== null &&
+    subtotalAmount < coupon.minOrderAmount
+  ) {
+    throw new BadRequestException(
+      "Your order doesn't meet this coupon's minimum amount",
+    );
+  }
+
+  const discountAmount =
+    coupon.discountType === CouponDiscountType.PERCENTAGE
+      ? Math.round((subtotalAmount * coupon.discountValue) / 100)
+      : Math.min(coupon.discountValue, subtotalAmount);
+
+  return { coupon, discountAmount };
 }

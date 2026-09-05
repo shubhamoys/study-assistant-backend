@@ -49,3 +49,8 @@ export enum PaymentStatus {
   SUCCESS = 'SUCCESS',
   FAILED = 'FAILED',
 }
+
+export enum CouponDiscountType {
+  PERCENTAGE = 'PERCENTAGE',
+  FIXED_AMOUNT = 'FIXED_AMOUNT',
+}

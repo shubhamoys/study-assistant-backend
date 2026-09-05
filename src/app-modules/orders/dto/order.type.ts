@@ -11,7 +11,16 @@ export class OrderType {
   id!: string;
 
   @Field(() => Int)
+  subtotalAmount!: number;
+
+  @Field(() => Int)
+  discountAmount!: number;
+
+  @Field(() => Int)
   totalAmount!: number;
+
+  @Field(() => String, { nullable: true })
+  couponCode!: string | null;
 
   @Field()
   currency!: string;

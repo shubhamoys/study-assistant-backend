@@ -10,6 +10,7 @@ import { StudySession } from '../../app-modules/study/entities/study-session.ent
 import { Review } from '../../app-modules/reviews/entities/review.entity';
 import { Attachment } from '../../app-modules/attachments/entities/attachment.entity';
 import { CartItem } from '../../app-modules/cart/entities/cart-item.entity';
+import { Coupon } from '../../app-modules/orders/entities/coupon.entity';
 import { Order } from '../../app-modules/orders/entities/order.entity';
 import { OrderItem } from '../../app-modules/orders/entities/order-item.entity';
 import { Payment } from '../../app-modules/orders/entities/payment.entity';
@@ -18,9 +19,9 @@ import { Payment } from '../../app-modules/orders/entities/payment.entity';
  * Registered with both the running app (TypeOrmModule) and the CLI DataSource.
  * `User`/`RefreshToken`/`Category`/`Deck`/`Library`/`CardProgress`/`Flashcard`/
  * `ReviewHistory`/`StudySession`/`Review`/`Attachment`/`CartItem`/`Order`/
- * `OrderItem`/`Payment` live in their owning app-modules — imported here
- * only to be listed for TypeORM; import the entity itself from its module,
- * not this barrel.
+ * `OrderItem`/`Payment`/`Coupon` live in their owning app-modules — imported
+ * here only to be listed for TypeORM; import the entity itself from its
+ * module, not this barrel.
  */
 export const entities = [
   User,
@@ -38,4 +39,5 @@ export const entities = [
   Order,
   OrderItem,
   Payment,
+  Coupon,
 ];

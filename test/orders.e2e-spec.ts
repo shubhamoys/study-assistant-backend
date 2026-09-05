@@ -1,13 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Like, Repository } from 'typeorm';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { User } from '../src/app-modules/users/entities/user.entity';
 import { Category } from '../src/app-modules/store/entities/category.entity';
 import { Deck } from '../src/app-modules/store/entities/deck.entity';
+import { Coupon } from '../src/app-modules/orders/entities/coupon.entity';
 import { Order } from '../src/app-modules/orders/entities/order.entity';
 import { UserRole } from '../src/database/enums';
 
@@ -32,6 +33,7 @@ describe('Orders (e2e)', () => {
   let categoryRepository: Repository<Category>;
   let deckRepository: Repository<Deck>;
   let orderRepository: Repository<Order>;
+  let couponRepository: Repository<Coupon>;
   let adminToken: string;
   let userToken: string;
   let categoryId: string;
@@ -42,6 +44,8 @@ describe('Orders (e2e)', () => {
   // comment), so deleting a deck that's still referenced by an order — even
   // indirectly, via User's CASCADE onto Deck.authorId — fails. Deleting the
   // order first cascades away its items/payments, clearing the block.
+  // Coupons are cleaned up by code prefix, independent of either user (an
+  // Order.couponId is SET NULL on delete, so order matters here.
   async function cleanupTestData() {
     const buyer = await userRepository.findOneBy({ email: TEST_EMAIL_USER });
     if (buyer) {
@@ -53,6 +57,7 @@ describe('Orders (e2e)', () => {
     }
     await userRepository.delete({ email: TEST_EMAIL_ADMIN });
     await userRepository.delete({ email: TEST_EMAIL_USER });
+    await couponRepository.delete({ code: Like('E2E%') });
   }
 
   beforeAll(async () => {
@@ -67,6 +72,7 @@ describe('Orders (e2e)', () => {
     categoryRepository = moduleFixture.get(getRepositoryToken(Category));
     deckRepository = moduleFixture.get(getRepositoryToken(Deck));
     orderRepository = moduleFixture.get(getRepositoryToken(Order));
+    couponRepository = moduleFixture.get(getRepositoryToken(Coupon));
     await cleanupTestData();
 
     const registerAdmin: GraphQLResponse<{
@@ -118,6 +124,18 @@ describe('Orders (e2e)', () => {
         `mutation { adminCreateDeck(input: { title: "${title}", categoryId: "${categoryId}", difficulty: BEGINNER, isFree: false, priceRupees: ${priceRupees} }) { id } }`,
       );
     return res.body.data!.adminCreateDeck.id;
+  }
+
+  async function createCoupon(
+    code: string,
+    fields: string,
+  ): Promise<{ id: string; code: string }> {
+    const res: GraphQLResponse<{ createCoupon: { id: string; code: string } }> =
+      await authedAs(
+        adminToken,
+        `mutation { createCoupon(input: { code: "${code}", ${fields} }) { id code } }`,
+      );
+    return res.body.data!.createCoupon;
   }
 
   it('rejects an unauthenticated checkout', async () => {
@@ -268,5 +286,287 @@ describe('Orders (e2e)', () => {
       `{ order(id: "${orderId}") { id } }`,
     );
     expect(res.body.errors?.[0]?.extensions?.code).toBe('NOT_FOUND');
+  });
+
+  describe('Coupons', () => {
+    it('rejects a non-admin creating or listing coupons', async () => {
+      const createRes: GraphQLResponse<null> = await authedAs(
+        userToken,
+        `mutation { createCoupon(input: { code: "E2E-NOPE", discountType: PERCENTAGE, discountValue: 10 }) { id } }`,
+      );
+      expect(createRes.body.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+
+      const listRes: GraphQLResponse<null> = await authedAs(
+        userToken,
+        `{ adminCoupons { id } }`,
+      );
+      expect(listRes.body.errors?.[0]?.extensions?.code).toBe('FORBIDDEN');
+    });
+
+    it('creates a coupon, lists it in adminCoupons, and rejects a duplicate code', async () => {
+      const coupon = await createCoupon(
+        'E2E-LIST',
+        'discountType: PERCENTAGE, discountValue: 15',
+      );
+
+      const listRes: GraphQLResponse<{
+        adminCoupons: { id: string; code: string; isActive: boolean }[];
+      }> = await authedAs(adminToken, `{ adminCoupons { id code isActive } }`);
+      expect(
+        listRes.body.data!.adminCoupons.some(
+          (c) => c.id === coupon.id && c.code === 'E2E-LIST' && c.isActive,
+        ),
+      ).toBe(true);
+
+      const dupRes: GraphQLResponse<null> = await authedAs(
+        adminToken,
+        `mutation { createCoupon(input: { code: "e2e-list", discountType: FIXED_AMOUNT, discountValue: 100 }) { id } }`,
+      );
+      expect(dupRes.body.errors?.[0]?.extensions?.code).toBe('CONFLICT');
+    });
+
+    it('rejects a PERCENTAGE coupon over 100', async () => {
+      const res: GraphQLResponse<null> = await authedAs(
+        adminToken,
+        `mutation { createCoupon(input: { code: "E2E-OVER100", discountType: PERCENTAGE, discountValue: 150 }) { id } }`,
+      );
+      expect(res.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
+    });
+
+    it('previewCoupon computes the discount without redeeming it, and rejects an unknown code', async () => {
+      const deckId = await createPaidDeck('E2E Coupon Preview Deck', 200);
+      await createCoupon(
+        'E2E-PREVIEW20',
+        'discountType: PERCENTAGE, discountValue: 20',
+      );
+      await authedAs(
+        userToken,
+        `mutation { addDeckToCart(deckId: "${deckId}") { id } }`,
+      );
+
+      const res: GraphQLResponse<{
+        previewCoupon: {
+          code: string;
+          subtotalAmount: number;
+          discountAmount: number;
+          totalAmount: number;
+        };
+      }> = await authedAs(
+        userToken,
+        `{ previewCoupon(code: "e2e-preview20") { code subtotalAmount discountAmount totalAmount } }`,
+      );
+      expect(res.body.data!.previewCoupon).toEqual({
+        code: 'E2E-PREVIEW20',
+        subtotalAmount: 20000,
+        discountAmount: 4000,
+        totalAmount: 16000,
+      });
+
+      // Redemption count is untouched by a preview — only checkout redeems.
+      const couponsRes: GraphQLResponse<{
+        adminCoupons: { code: string; redemptionsCount: number }[];
+      }> = await authedAs(
+        adminToken,
+        `{ adminCoupons { code redemptionsCount } }`,
+      );
+      expect(
+        couponsRes.body.data!.adminCoupons.find(
+          (c) => c.code === 'E2E-PREVIEW20',
+        )?.redemptionsCount,
+      ).toBe(0);
+
+      const unknownRes: GraphQLResponse<null> = await authedAs(
+        userToken,
+        `{ previewCoupon(code: "E2E-NONEXISTENT") { code } }`,
+      );
+      expect(unknownRes.body.errors?.[0]?.extensions?.code).toBe('NOT_FOUND');
+
+      // Clear the cart so it doesn't bleed into the next test.
+      await authedAs(
+        userToken,
+        `mutation { removeDeckFromCart(deckId: "${deckId}") }`,
+      );
+    });
+
+    it('applies a PERCENTAGE coupon at checkout and increments its redemption count', async () => {
+      const deckId = await createPaidDeck('E2E Coupon Percent Deck', 200);
+      await createCoupon(
+        'E2E-PERCENT20',
+        'discountType: PERCENTAGE, discountValue: 20',
+      );
+      await authedAs(
+        userToken,
+        `mutation { addDeckToCart(deckId: "${deckId}") { id } }`,
+      );
+
+      const res: GraphQLResponse<{
+        checkout: {
+          subtotalAmount: number;
+          discountAmount: number;
+          totalAmount: number;
+          couponCode: string | null;
+        };
+      }> = await authedAs(
+        userToken,
+        `mutation { checkout(couponCode: "e2e-percent20") { subtotalAmount discountAmount totalAmount couponCode } }`,
+      );
+      expect(res.body.data!.checkout).toEqual({
+        subtotalAmount: 20000,
+        discountAmount: 4000,
+        totalAmount: 16000,
+        couponCode: 'E2E-PERCENT20',
+      });
+
+      const couponsRes: GraphQLResponse<{
+        adminCoupons: { code: string; redemptionsCount: number }[];
+      }> = await authedAs(
+        adminToken,
+        `{ adminCoupons { code redemptionsCount } }`,
+      );
+      expect(
+        couponsRes.body.data!.adminCoupons.find(
+          (c) => c.code === 'E2E-PERCENT20',
+        )?.redemptionsCount,
+      ).toBe(1);
+    });
+
+    it('caps a FIXED_AMOUNT coupon at the subtotal so the total never goes negative', async () => {
+      const deckId = await createPaidDeck('E2E Coupon Fixed Deck', 50);
+      await createCoupon(
+        'E2E-FIXED100',
+        'discountType: FIXED_AMOUNT, discountValue: 10000',
+      );
+      await authedAs(
+        userToken,
+        `mutation { addDeckToCart(deckId: "${deckId}") { id } }`,
+      );
+
+      const res: GraphQLResponse<{
+        checkout: {
+          subtotalAmount: number;
+          discountAmount: number;
+          totalAmount: number;
+        };
+      }> = await authedAs(
+        userToken,
+        `mutation { checkout(couponCode: "E2E-FIXED100") { subtotalAmount discountAmount totalAmount } }`,
+      );
+      expect(res.body.data!.checkout).toEqual({
+        subtotalAmount: 5000,
+        discountAmount: 5000,
+        totalAmount: 0,
+      });
+    });
+
+    it('rejects a coupon below its minOrderAmount, past its expiry, or over its redemption limit', async () => {
+      const cheapDeckId = await createPaidDeck('E2E Coupon Min Deck', 10);
+      await createCoupon(
+        'E2E-MINORDER',
+        'discountType: FIXED_AMOUNT, discountValue: 100, minOrderAmount: 100000',
+      );
+      await authedAs(
+        userToken,
+        `mutation { addDeckToCart(deckId: "${cheapDeckId}") { id } }`,
+      );
+      const minRes: GraphQLResponse<null> = await authedAs(
+        userToken,
+        `mutation { checkout(couponCode: "E2E-MINORDER") { id } }`,
+      );
+      expect(minRes.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
+      await authedAs(
+        userToken,
+        `mutation { removeDeckFromCart(deckId: "${cheapDeckId}") }`,
+      );
+
+      const expiredDeckId = await createPaidDeck('E2E Coupon Expired Deck', 20);
+      await createCoupon(
+        'E2E-EXPIRED',
+        `discountType: PERCENTAGE, discountValue: 10, expiresAt: "2020-01-01T00:00:00.000Z"`,
+      );
+      await authedAs(
+        userToken,
+        `mutation { addDeckToCart(deckId: "${expiredDeckId}") { id } }`,
+      );
+      const expiredRes: GraphQLResponse<null> = await authedAs(
+        userToken,
+        `mutation { checkout(couponCode: "E2E-EXPIRED") { id } }`,
+      );
+      expect(expiredRes.body.errors?.[0]?.extensions?.code).toBe('BAD_REQUEST');
+      await authedAs(
+        userToken,
+        `mutation { removeDeckFromCart(deckId: "${expiredDeckId}") }`,
+      );
+
+      const limitedDeckId = await createPaidDeck('E2E Coupon Limited Deck', 20);
+      await createCoupon(
+        'E2E-LIMITED',
+        'discountType: PERCENTAGE, discountValue: 10, maxRedemptions: 1',
+      );
+      await authedAs(
+        userToken,
+        `mutation { addDeckToCart(deckId: "${limitedDeckId}") { id } }`,
+      );
+      const firstUseRes: GraphQLResponse<{ checkout: { id: string } }> =
+        await authedAs(
+          userToken,
+          `mutation { checkout(couponCode: "E2E-LIMITED") { id } }`,
+        );
+      expect(firstUseRes.body.data!.checkout.id).toEqual(expect.any(String));
+
+      const secondDeckId = await createPaidDeck(
+        'E2E Coupon Limited Deck 2',
+        20,
+      );
+      await authedAs(
+        userToken,
+        `mutation { addDeckToCart(deckId: "${secondDeckId}") { id } }`,
+      );
+      const secondUseRes: GraphQLResponse<null> = await authedAs(
+        userToken,
+        `mutation { checkout(couponCode: "E2E-LIMITED") { id } }`,
+      );
+      expect(secondUseRes.body.errors?.[0]?.extensions?.code).toBe(
+        'BAD_REQUEST',
+      );
+      await authedAs(
+        userToken,
+        `mutation { removeDeckFromCart(deckId: "${secondDeckId}") }`,
+      );
+    });
+
+    it('deactivating a coupon makes it unusable at checkout, and rejects an unknown code the same way', async () => {
+      const deckId = await createPaidDeck('E2E Coupon Deactivated Deck', 20);
+      const coupon = await createCoupon(
+        'E2E-DEACTIVATE',
+        'discountType: PERCENTAGE, discountValue: 10',
+      );
+      await authedAs(
+        adminToken,
+        `mutation { updateCoupon(id: "${coupon.id}", input: { isActive: false }) { id isActive } }`,
+      );
+      await authedAs(
+        userToken,
+        `mutation { addDeckToCart(deckId: "${deckId}") { id } }`,
+      );
+
+      const deactivatedRes: GraphQLResponse<null> = await authedAs(
+        userToken,
+        `mutation { checkout(couponCode: "E2E-DEACTIVATE") { id } }`,
+      );
+      expect(deactivatedRes.body.errors?.[0]?.extensions?.code).toBe(
+        'NOT_FOUND',
+      );
+
+      const unknownRes: GraphQLResponse<null> = await authedAs(
+        userToken,
+        `mutation { checkout(couponCode: "E2E-TOTALLY-UNKNOWN") { id } }`,
+      );
+      expect(unknownRes.body.errors?.[0]?.extensions?.code).toBe('NOT_FOUND');
+
+      // Checkout without a coupon still works normally for the same cart.
+      const res: GraphQLResponse<{ checkout: { discountAmount: number } }> =
+        await authedAs(userToken, `mutation { checkout { discountAmount } }`);
+      expect(res.body.data!.checkout.discountAmount).toBe(0);
+    });
   });
 });

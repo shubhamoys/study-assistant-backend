@@ -1,6 +1,7 @@
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User } from '../users/entities/user.entity';
+import { CouponPreviewType } from './dto/coupon-preview.type';
 import { OrderType } from './dto/order.type';
 import { Order } from './entities/order.entity';
 import { OrdersService } from './orders.service';
@@ -22,8 +23,20 @@ export class OrdersResolver {
     return this.ordersService.findOne(user.id, id);
   }
 
+  @Query(() => CouponPreviewType)
+  previewCoupon(
+    @Args('code') code: string,
+    @CurrentUser() user: User,
+  ): Promise<CouponPreviewType> {
+    return this.ordersService.previewCoupon(user.id, code);
+  }
+
   @Mutation(() => OrderType)
-  checkout(@CurrentUser() user: User): Promise<Order> {
-    return this.ordersService.checkout(user.id);
+  checkout(
+    @CurrentUser() user: User,
+    @Args('couponCode', { type: () => String, nullable: true })
+    couponCode?: string,
+  ): Promise<Order> {
+    return this.ordersService.checkout(user.id, couponCode);
   }
 }

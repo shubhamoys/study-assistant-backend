@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { OrderStatus } from '../../../database/enums';
 import { User } from '../../users/entities/user.entity';
+import { Coupon } from './coupon.entity';
 import { OrderItem } from './order-item.entity';
 import { Payment } from './payment.entity';
 
@@ -27,9 +28,32 @@ export class Order {
   @JoinColumn({ name: 'userId' })
   user!: User;
 
-  /** Lowest currency unit (paise) — sum of every OrderItem.price on this order. */
+  /** Lowest currency unit (paise) — sum of every OrderItem.price, before any coupon discount. */
+  @Column({ type: 'int' })
+  subtotalAmount!: number;
+
+  /** Lowest currency unit (paise) — 0 when no coupon was applied. */
+  @Column({ type: 'int', default: 0 })
+  discountAmount!: number;
+
+  /** Lowest currency unit (paise) — `subtotalAmount - discountAmount`, what was actually paid. */
   @Column({ type: 'int' })
   totalAmount!: number;
+
+  @Column({ type: 'uuid', nullable: true })
+  couponId!: string | null;
+
+  @ManyToOne(() => Coupon, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'couponId' })
+  coupon!: Coupon | null;
+
+  /**
+   * Snapshot of `coupon.code` at checkout time — same reasoning as
+   * `OrderItem.price`: a coupon's own code can change later (or the coupon
+   * be deactivated), but this order's history shouldn't drift with it.
+   */
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  couponCode!: string | null;
 
   @Column({ type: 'varchar', length: 3, default: 'INR' })
   currency!: string;
