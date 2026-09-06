@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, Transporter } from 'nodemailer';
+import { renderEmail } from './email-template';
 
 interface SendMailArgs {
   to: string;
@@ -41,8 +42,17 @@ export class MailService {
     await this.send({
       to,
       subject: 'Verify your email — StudyLoop',
-      text: `Verify your email by visiting: ${link}`,
-      html: `<p>Welcome to StudyLoop! Please verify your email address.</p><p><a href="${link}">${link}</a></p>`,
+      text: `Welcome to StudyLoop! Confirm your email address by visiting: ${link}`,
+      html: renderEmail({
+        preheader:
+          'Confirm your email address to finish setting up your account.',
+        heading: 'Verify your email',
+        paragraphs: [
+          'Welcome to StudyLoop! Confirm this is your email address to finish setting up your account.',
+        ],
+        ctaText: 'Verify email',
+        ctaLink: link,
+      }),
     });
   }
 
@@ -52,7 +62,18 @@ export class MailService {
       to,
       subject: 'Reset your password — StudyLoop',
       text: `Reset your password by visiting: ${link}\nThis link expires in 1 hour.`,
-      html: `<p>Reset your password by clicking the link below. This link expires in 1 hour.</p><p><a href="${link}">${link}</a></p>`,
+      html: renderEmail({
+        preheader:
+          'Reset your StudyLoop password. This link expires in 1 hour.',
+        heading: 'Reset your password',
+        paragraphs: [
+          'We got a request to reset your StudyLoop password. Click the button below to choose a new one.',
+          "If you didn't request this, you can safely ignore this email — your password won't be changed.",
+        ],
+        ctaText: 'Reset password',
+        ctaLink: link,
+        footnote: 'This link expires in 1 hour.',
+      }),
     });
   }
 
