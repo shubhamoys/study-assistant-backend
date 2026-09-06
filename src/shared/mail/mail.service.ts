@@ -40,9 +40,9 @@ export class MailService {
     const link = `${this.frontendUrl}/verify-email?token=${rawToken}`;
     await this.send({
       to,
-      subject: 'Verify your email — AI Study Assistant',
+      subject: 'Verify your email — StudyLoop',
       text: `Verify your email by visiting: ${link}`,
-      html: `<p>Welcome to AI Study Assistant! Please verify your email address.</p><p><a href="${link}">${link}</a></p>`,
+      html: `<p>Welcome to StudyLoop! Please verify your email address.</p><p><a href="${link}">${link}</a></p>`,
     });
   }
 
@@ -50,7 +50,7 @@ export class MailService {
     const link = `${this.frontendUrl}/reset-password?token=${rawToken}`;
     await this.send({
       to,
-      subject: 'Reset your password — AI Study Assistant',
+      subject: 'Reset your password — StudyLoop',
       text: `Reset your password by visiting: ${link}\nThis link expires in 1 hour.`,
       html: `<p>Reset your password by clicking the link below. This link expires in 1 hour.</p><p><a href="${link}">${link}</a></p>`,
     });

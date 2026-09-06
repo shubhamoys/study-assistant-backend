@@ -5,6 +5,5 @@ export default registerAs('mail', () => ({
   port: parseInt(process.env.MAILTRAP_PORT ?? '2525', 10),
   user: process.env.MAILTRAP_USER,
   pass: process.env.MAILTRAP_PASS,
-  from:
-    process.env.MAIL_FROM ?? 'AI Study Assistant <no-reply@studyassistant.dev>',
+  from: process.env.MAIL_FROM ?? 'StudyLoop <no-reply@studyloop.dev>',
 }));

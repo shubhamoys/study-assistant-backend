@@ -41,7 +41,7 @@ async function main() {
       // from rerunning this seeder.
       role: UserRole.SUPER_ADMIN,
       isEmailVerified: true,
-      displayName: 'Study Assistant',
+      displayName: 'StudyLoop',
     },
     ['email'],
   );
@@ -170,8 +170,8 @@ async function main() {
   // log in as either of them.
   const reviewerPasswordHash = await bcrypt.hash(reviewerPassword, 10);
   const reviewerDefinitions = [
-    { email: 'priya.demo@studyassistant.dev', displayName: 'Priya Patel' },
-    { email: 'marcus.demo@studyassistant.dev', displayName: 'Marcus Chen' },
+    { email: 'priya.demo@studyloop.dev', displayName: 'Priya Patel' },
+    { email: 'marcus.demo@studyloop.dev', displayName: 'Marcus Chen' },
   ];
   await userRepository.upsert(
     reviewerDefinitions.map((reviewer) => ({
