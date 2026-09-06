@@ -61,6 +61,19 @@ export class Order {
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
   status!: OrderStatus;
 
+  /**
+   * The Razorpay Order this internal order is paired 1:1 with — set at
+   * `initiateCheckout` time, before any payment happens. `verifyPayment`
+   * requires the client-submitted Razorpay order id to match this exact
+   * value, which is what stops a signature valid for a *different* (e.g.
+   * cheaper) transaction from being replayed against this one. Null only
+   * for the zero-amount-due case (a coupon fully covers the order), which
+   * never goes through Razorpay at all.
+   */
+  @Index({ unique: true, where: '"razorpayOrderId" IS NOT NULL' })
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  razorpayOrderId!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

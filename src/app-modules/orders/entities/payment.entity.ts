@@ -12,11 +12,12 @@ import { PaymentGateway, PaymentStatus } from '../../../database/enums';
 import { Order } from './order.entity';
 
 /**
- * One row per checkout attempt on an order — today that's always exactly
- * one MANUAL-gateway row created the instant checkout completes (see
- * OrdersService.checkout). Kept as its own table, not folded into Order,
- * so a real gateway integration (Razorpay) can later add rows here —
- * retries, webhook-driven status updates — without touching Order's shape.
+ * One row per successfully completed order — created only once
+ * `OrdersService.finalizeOrder` runs (a real Razorpay payment verified in
+ * `verifyPayment`, or a coupon covering the order in full, which stays
+ * MANUAL since no money moved). Kept as its own table, not folded into
+ * Order, so a failed/retried Razorpay attempt could add further rows here
+ * later without touching Order's shape.
  */
 @Entity('payments')
 export class Payment {
@@ -45,7 +46,7 @@ export class Payment {
   @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.PENDING })
   status!: PaymentStatus;
 
-  /** Full gateway response payload — always null for the MANUAL stub; populated once Razorpay lands. */
+  /** Full gateway response payload — the fetched Razorpay Payments API response for a real payment, null for a MANUAL (fully-discounted, nothing to charge) order. */
   @Column({ type: 'jsonb', nullable: true })
   rawResponse!: Record<string, unknown> | null;
 

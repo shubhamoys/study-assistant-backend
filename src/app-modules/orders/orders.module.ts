@@ -8,6 +8,7 @@ import { Coupon } from './entities/coupon.entity';
 import { Order } from './entities/order.entity';
 import { OrdersResolver } from './orders.resolver';
 import { OrdersService } from './orders.service';
+import { RazorpayClient } from './razorpay-client.service';
 
 // Order/Flashcard/CartItem/Coupon are the only entities ever
 // @InjectRepository()'d directly (see OrdersService/CouponsService) —
@@ -17,6 +18,12 @@ import { OrdersService } from './orders.service';
 // forFeature here only needs to list what this module's own providers inject.
 @Module({
   imports: [TypeOrmModule.forFeature([Order, Flashcard, CartItem, Coupon])],
-  providers: [OrdersService, OrdersResolver, CouponsService, CouponsResolver],
+  providers: [
+    OrdersService,
+    OrdersResolver,
+    CouponsService,
+    CouponsResolver,
+    RazorpayClient,
+  ],
 })
 export class OrdersModule {}
