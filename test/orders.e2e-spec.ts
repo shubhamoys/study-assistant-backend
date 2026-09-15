@@ -12,6 +12,7 @@ import { Category } from '../src/app-modules/store/entities/category.entity';
 import { Deck } from '../src/app-modules/store/entities/deck.entity';
 import { Coupon } from '../src/app-modules/orders/entities/coupon.entity';
 import { Order } from '../src/app-modules/orders/entities/order.entity';
+import { Library } from '../src/app-modules/library/entities/library.entity';
 import { RazorpayClient } from '../src/app-modules/orders/razorpay-client.service';
 import { UserRole } from '../src/database/enums';
 
@@ -86,10 +87,12 @@ describe('Orders (e2e)', () => {
   let deckRepository: Repository<Deck>;
   let orderRepository: Repository<Order>;
   let couponRepository: Repository<Coupon>;
+  let libraryRepository: Repository<Library>;
   let razorpayClient: TestRazorpayClient;
   let razorpaySecret: string;
   let adminToken: string;
   let userToken: string;
+  let userId: string;
   let categoryId: string;
   let orderId: string;
 
@@ -130,6 +133,7 @@ describe('Orders (e2e)', () => {
     deckRepository = moduleFixture.get(getRepositoryToken(Deck));
     orderRepository = moduleFixture.get(getRepositoryToken(Order));
     couponRepository = moduleFixture.get(getRepositoryToken(Coupon));
+    libraryRepository = moduleFixture.get(getRepositoryToken(Library));
     razorpayClient = moduleFixture.get(RazorpayClient);
     razorpaySecret = moduleFixture
       .get(ConfigService)
@@ -161,6 +165,8 @@ describe('Orders (e2e)', () => {
         ),
       );
     userToken = registerUser.body.data!.register.accessToken;
+    userId = (await userRepository.findOneByOrFail({ email: TEST_EMAIL_USER }))
+      .id;
 
     const [category] = await categoryRepository.find({ take: 1 });
     categoryId = category.id;
@@ -541,6 +547,48 @@ describe('Orders (e2e)', () => {
     const finalCartRes: GraphQLResponse<{ myCart: { id: string }[] }> =
       await authedAs(userToken, `{ myCart { id } }`);
     expect(finalCartRes.body.data!.myCart).toEqual([]);
+  });
+
+  it('drops a cart item the user already owns, rather than charging for it again', async () => {
+    const staysPaidId = await createPaidDeck('E2E Order Stays Paid 2', 120);
+    const alreadyOwnedId = await createPaidDeck('E2E Order Already Owned', 175);
+
+    await authedAs(
+      userToken,
+      `mutation { addDeckToCart(deckId: "${staysPaidId}") { id } }`,
+    );
+    // addDeckToCart itself would now reject this (see cart.e2e-spec.ts), so
+    // insert the cart row directly to simulate one that predates that guard,
+    // or a deck acquired some other way after it was already in the cart —
+    // checkout's own drop-stale-items filter is what this test targets.
+    await authedAs(
+      userToken,
+      `mutation { addDeckToCart(deckId: "${alreadyOwnedId}") { id } }`,
+    );
+    await libraryRepository.save(
+      libraryRepository.create({ userId, deckId: alreadyOwnedId }),
+    );
+
+    const session = (await startCheckout(userToken)).body.data!.checkout;
+    expect(session.amount).toBe(12000);
+
+    const cartRes: GraphQLResponse<{ myCart: { deck: { id: string } }[] }> =
+      await authedAs(userToken, `{ myCart { deck { id } } }`);
+    expect(cartRes.body.data!.myCart).toHaveLength(1);
+    expect(cartRes.body.data!.myCart[0].deck.id).toBe(staysPaidId);
+
+    const res = await payAndVerify(
+      userToken,
+      session,
+      'items { deck { id } } totalAmount',
+    );
+    const order = res.body.data!.verifyPayment as {
+      items: { deck: { id: string } }[];
+      totalAmount: number;
+    };
+    expect(order.items).toHaveLength(1);
+    expect(order.items[0].deck.id).toBe(staysPaidId);
+    expect(order.totalAmount).toBe(12000);
   });
 
   it('lists the completed order in myOrders, but not a cancelled/abandoned one', async () => {

@@ -170,7 +170,7 @@ async function main() {
   // log in as either of them.
   const reviewerPasswordHash = await bcrypt.hash(reviewerPassword, 10);
   const reviewerDefinitions = [
-    { email: 'priya.demo@studyloop.dev', displayName: 'Priya Patel' },
+    { email: 'john.doe@studyloop.dev', displayName: 'John Doe' },
     { email: 'marcus.demo@studyloop.dev', displayName: 'Marcus Chen' },
   ];
   await userRepository.upsert(
@@ -182,7 +182,7 @@ async function main() {
     })),
     ['email'],
   );
-  const [priya, marcus] = await Promise.all(
+  const [johnDoe, marcus] = await Promise.all(
     reviewerDefinitions.map((reviewer) =>
       userRepository.findOneByOrFail({ email: reviewer.email }),
     ),
@@ -190,7 +190,7 @@ async function main() {
 
   const reviewDefinitions = [
     {
-      userId: priya.id,
+      userId: johnDoe.id,
       deckId: jsDeck.id,
       rating: 5,
       comment: 'Clear and well organized — closures finally clicked for me.',
@@ -202,7 +202,7 @@ async function main() {
       comment: 'Good refresher. Would love a few more cards on closures.',
     },
     {
-      userId: priya.id,
+      userId: johnDoe.id,
       deckId: spanishDeck.id,
       rating: 4,
       comment: 'Solid basics deck for absolute beginners.',

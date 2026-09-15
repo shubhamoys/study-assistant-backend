@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Flashcard } from '../study/entities/flashcard.entity';
 import { Deck } from '../store/entities/deck.entity';
+import { Library } from '../library/entities/library.entity';
 import { CartItem } from './entities/cart-item.entity';
 
 // Same heuristic as StoreService/LibraryService — see their comment.
@@ -18,6 +19,8 @@ export class CartService {
     @InjectRepository(CartItem)
     private readonly cartItemRepository: Repository<CartItem>,
     @InjectRepository(Deck) private readonly deckRepository: Repository<Deck>,
+    @InjectRepository(Library)
+    private readonly libraryRepository: Repository<Library>,
   ) {}
 
   findForUser(userId: string): Promise<CartItem[]> {
@@ -50,6 +53,18 @@ export class CartService {
     });
     if (existing) {
       throw new ConflictException('Deck is already in your cart');
+    }
+
+    // A purchase is permanent (see LibraryService.removeDeck) — re-buying a
+    // deck you already own would just charge you again for nothing new, so
+    // block it here at the one place every purchase path funnels through,
+    // not just in the frontend's button state.
+    const alreadyOwned = await this.libraryRepository.findOneBy({
+      userId,
+      deckId,
+    });
+    if (alreadyOwned) {
+      throw new ConflictException('You already own this deck.');
     }
 
     const saved = await this.cartItemRepository.save(

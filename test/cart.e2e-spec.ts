@@ -8,6 +8,7 @@ import { AppModule } from './../src/app.module';
 import { User } from '../src/app-modules/users/entities/user.entity';
 import { Category } from '../src/app-modules/store/entities/category.entity';
 import { Deck } from '../src/app-modules/store/entities/deck.entity';
+import { Library } from '../src/app-modules/library/entities/library.entity';
 import { UserRole } from '../src/database/enums';
 
 interface GraphQLResponse<T> {
@@ -31,12 +32,15 @@ describe('Cart (e2e)', () => {
   let userRepository: Repository<User>;
   let categoryRepository: Repository<Category>;
   let deckRepository: Repository<Deck>;
+  let libraryRepository: Repository<Library>;
   let adminToken: string;
   let userToken: string;
   let otherUserToken: string;
   let adminId: string;
+  let userId: string;
   let paidDeckId: string;
   let freeDeckId: string;
+  let ownedPaidDeckId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -49,6 +53,7 @@ describe('Cart (e2e)', () => {
     userRepository = moduleFixture.get(getRepositoryToken(User));
     categoryRepository = moduleFixture.get(getRepositoryToken(Category));
     deckRepository = moduleFixture.get(getRepositoryToken(Deck));
+    libraryRepository = moduleFixture.get(getRepositoryToken(Library));
     await userRepository.delete({ email: TEST_EMAIL_ADMIN });
     await userRepository.delete({ email: TEST_EMAIL_USER });
     await userRepository.delete({ email: TEST_EMAIL_OTHER_USER });
@@ -92,6 +97,8 @@ describe('Cart (e2e)', () => {
         ),
       );
     otherUserToken = registerOtherUser.body.data!.register.accessToken;
+    userId = (await userRepository.findOneByOrFail({ email: TEST_EMAIL_USER }))
+      .id;
 
     const [category] = await categoryRepository.find({ take: 1 });
 
@@ -116,6 +123,24 @@ describe('Cart (e2e)', () => {
           ),
         );
     freeDeckId = createFreeDeck.body.data!.adminCreateDeck.id;
+
+    const createOwnedPaidDeck: GraphQLResponse<{
+      adminCreateDeck: { id: string };
+    }> = await request(app.getHttpServer())
+      .post('/graphql')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(
+        gql(
+          `mutation { adminCreateDeck(input: { title: "E2E Cart Already-Owned Deck", categoryId: "${category.id}", difficulty: BEGINNER, isFree: false, priceRupees: 199 }) { id } }`,
+        ),
+      );
+    ownedPaidDeckId = createOwnedPaidDeck.body.data!.adminCreateDeck.id;
+    // Simulates having already bought this deck (normally granted by
+    // checkout) — the point of this fixture is to test addDeckToCart's own
+    // ownership check independent of the checkout flow itself.
+    await libraryRepository.save(
+      libraryRepository.create({ userId, deckId: ownedPaidDeckId }),
+    );
   });
 
   afterAll(async () => {
@@ -154,6 +179,22 @@ describe('Cart (e2e)', () => {
       `mutation { addDeckToCart(deckId: "${freeDeckId}") { id } }`,
     );
     expect(res.body.errors?.[0]?.extensions?.code).toBe('CONFLICT');
+  });
+
+  it('rejects adding a deck the user already owns', async () => {
+    const res: GraphQLResponse<null> = await authedAs(
+      userToken,
+      `mutation { addDeckToCart(deckId: "${ownedPaidDeckId}") { id } }`,
+    );
+    expect(res.body.errors?.[0]?.extensions?.code).toBe('CONFLICT');
+
+    const cartRes: GraphQLResponse<{ myCart: { deck: { id: string } }[] }> =
+      await authedAs(userToken, `{ myCart { deck { id } } }`);
+    expect(
+      cartRes.body.data!.myCart.some(
+        (item) => item.deck.id === ownedPaidDeckId,
+      ),
+    ).toBe(false);
   });
 
   it('404s adding a deck that does not exist', async () => {

@@ -55,6 +55,8 @@ export class OrdersService {
     private readonly cartItemRepository: Repository<CartItem>,
     @InjectRepository(Coupon)
     private readonly couponRepository: Repository<Coupon>,
+    @InjectRepository(Library)
+    private readonly libraryRepository: Repository<Library>,
     private readonly configService: ConfigService,
     private readonly razorpayClient: RazorpayClient,
   ) {}
@@ -88,10 +90,20 @@ export class OrdersService {
       });
 
       // A deck could have gone free or been unpublished since it was added
-      // to the cart (an admin edit) — drop it rather than fail the whole
-      // checkout. Anything left is what actually gets purchased.
+      // to the cart (an admin edit), or the user could already own it (e.g.
+      // it sat in the cart from before this check existed, or they acquired
+      // it some other way in the meantime) — drop it rather than fail the
+      // whole checkout. Anything left is what actually gets purchased.
+      const owned = await manager.find(Library, {
+        where: { userId },
+        select: { deckId: true },
+      });
+      const ownedDeckIds = new Set(owned.map((entry) => entry.deckId));
       const purchasable = cartItems.filter(
-        (item) => item.deck.isPublic && !item.deck.isFree,
+        (item) =>
+          item.deck.isPublic &&
+          !item.deck.isFree &&
+          !ownedDeckIds.has(item.deckId),
       );
       if (purchasable.length === 0) {
         throw new BadRequestException(
@@ -100,10 +112,10 @@ export class OrdersService {
       }
 
       // A dropped item doesn't belong in the cart anymore either — it's now
-      // either free (which only ever belongs in the library) or
-      // unpublished — so it's removed right away, independent of whether
-      // payment ever completes. The *purchasable* items deliberately stay
-      // in the cart until `finalizeOrder` removes them on confirmed
+      // either free (which only ever belongs in the library), unpublished,
+      // or already owned — so it's removed right away, independent of
+      // whether payment ever completes. The *purchasable* items deliberately
+      // stay in the cart until `finalizeOrder` removes them on confirmed
       // payment — if this checkout is abandoned or fails, the user's cart
       // still has what they were trying to buy, ready to retry.
       const droppedDeckIds = cartItems
@@ -359,8 +371,16 @@ export class OrdersService {
       where: { userId },
       relations: { deck: true },
     });
+    const owned = await this.libraryRepository.find({
+      where: { userId },
+      select: { deckId: true },
+    });
+    const ownedDeckIds = new Set(owned.map((entry) => entry.deckId));
     const purchasable = cartItems.filter(
-      (item) => item.deck.isPublic && !item.deck.isFree,
+      (item) =>
+        item.deck.isPublic &&
+        !item.deck.isFree &&
+        !ownedDeckIds.has(item.deckId),
     );
     if (purchasable.length === 0) {
       throw new BadRequestException('Your cart has nothing to check out');
