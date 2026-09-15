@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: study-assistant-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: study_assistant
+      POSTGRES_PASSWORD: study_assistant
+      POSTGRES_DB: study_assistant_dev
+    # Host port 5433, not 5432 — this dev machine already had a native
+    # Postgres service bound to 5432 when this was first set up; DATABASE_URL
+    # in .env/.env.example points at 5433 to match. Change both together if
+    # you ever need a different host port.
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U study_assistant -d study_assistant_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
